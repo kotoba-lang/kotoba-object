@@ -3,12 +3,26 @@
 
   Callers own target policy, section ordering, instruction/data bytes, symbol
   selection, and relocation requests. This namespace owns Mach-O records and
-  their compact MH_OBJECT file layout. Relocations are deliberately rejected
-  until a typed relocation contract is added."
+  their compact MH_OBJECT file layout, including typed external relocations."
   (:require [clojure.string :as str]))
 
 (def ^:private machines
-  {:aarch64 {:cpu-type 0x0100000c :cpu-subtype 0}})
+  {:aarch64 {:cpu-type 0x0100000c :cpu-subtype 0}
+   :x86-64 {:cpu-type 0x01000007 :cpu-subtype 3}})
+
+(def ^:private relocation-types
+  {:aarch64
+   {:aarch64/unsigned {:code 0 :width 8 :pcrel? false}
+    :aarch64/branch26 {:code 2 :width 4 :pcrel? true}
+    :aarch64/page21 {:code 3 :width 4 :pcrel? true}
+    :aarch64/pageoff12 {:code 4 :width 4 :pcrel? false}}
+   :x86-64
+   {:x86-64/unsigned {:code 0 :width 8 :pcrel? false}
+    :x86-64/signed {:code 1 :width 4 :pcrel? true}
+    :x86-64/branch {:code 2 :width 4 :pcrel? true}
+    :x86-64/got-load {:code 3 :width 4 :pcrel? true}
+    :x86-64/got {:code 4 :width 4 :pcrel? true}
+    :x86-64/tlv {:code 9 :width 4 :pcrel? true}}})
 
 (def ^:private platforms
   {:macos 1 :ios 2 :tvos 3 :watchos 4 :maccatalyst 6
@@ -17,6 +31,7 @@
 
 (def ^:private max-section-count 32)
 (def ^:private max-symbol-count 4096)
+(def ^:private max-relocation-count 65535)
 (def ^:private max-object-bytes (* 64 1024 1024))
 
 (defn- reject! [message data]
@@ -82,16 +97,13 @@
 (defn- layout-sections [data-offset sections]
   (reduce (fn [{:keys [address file-offset laid-out]} [index section]]
             (let [{:keys [segment name align flags bytes relocations]} section
-                  _ (when (seq relocations)
-                      (reject! "Mach-O relocations are not supported yet"
-                               {:section name}))
                   bytes (byte-vector :section-bytes bytes)
                   aligned-address (align-up address align)
                   aligned-offset (align-up file-offset align)
                   record {:index (inc index) :segment segment :name name
                           :address aligned-address :size (count bytes)
                           :offset aligned-offset :align align :flags flags
-                          :bytes bytes}]
+                          :bytes bytes :relocations (vec relocations)}]
               (fixed-name :segment segment)
               (fixed-name :section name)
               (when-not (and (integer? flags) (<= 0 flags 0xffffffff))
@@ -103,12 +115,27 @@
           {:address 0 :file-offset data-offset :laid-out []}
           (map-indexed vector sections)))
 
+(defn- layout-relocations [file-offset sections]
+  (reduce (fn [{:keys [file-offset laid-out]} section]
+            (let [relocations (:relocations section)
+                  count (count relocations)]
+              (when (> count max-relocation-count)
+                (reject! "too many Mach-O relocations"
+                         {:section (:name section) :count count}))
+              (let [offset (if (pos? count) (align-up file-offset 2) 0)]
+                {:file-offset (if (pos? count) (+ offset (* 8 count)) file-offset)
+                 :laid-out (conj laid-out
+                                 (assoc section :reloc-offset offset
+                                                :reloc-count count))})))
+          {:file-offset file-offset :laid-out []}
+          sections))
+
 (defn- encode-section
-  [{:keys [segment name address size offset align flags]}]
+  [{:keys [segment name address size offset align flags reloc-offset reloc-count]}]
   (vec (concat (fixed-name :section name) (fixed-name :segment segment)
                (little-endian address 8) (little-endian size 8)
                (little-endian offset 4) (little-endian align 4)
-               (little-endian 0 4) (little-endian 0 4)
+               (little-endian reloc-offset 4) (little-endian reloc-count 4)
                (little-endian flags 4)
                (repeat 12 0))))
 
@@ -126,19 +153,54 @@
 
 (defn- encode-symbol [sections string-offsets {:keys [name section value external? description]
                                                :or {external? false description 0}}]
-  (when-not (and (integer? section) (<= 1 section (count sections)))
+  (when-not (and (integer? section) (<= 0 section (count sections)))
     (reject! "Mach-O symbol references an invalid section"
              {:name name :section section}))
-  (let [{section-address :address section-size :size} (nth sections (dec section))]
-    (when-not (and (integer? value) (<= 0 value section-size))
-    (reject! "invalid Mach-O symbol value" {:name name :value value}))
+  (let [{section-address :address section-size :size}
+        (when (pos? section) (nth sections (dec section)))]
+    (when-not (if (zero? section)
+                (and external? (integer? value) (zero? value))
+                (and (integer? value) (<= 0 value section-size)))
+      (reject! "invalid Mach-O symbol value" {:name name :value value}))
     (when-not (and (integer? description) (<= 0 description 0xffff))
       (reject! "invalid Mach-O symbol description"
                {:name name :description description}))
     (vec (concat (little-endian (get string-offsets name) 4)
-                 [(bit-or 0x0e (if external? 0x01 0)) section]
+                 [(if (zero? section) 0x01
+                      (bit-or 0x0e (if external? 0x01 0)))
+                  section]
                  (little-endian description 2)
-                 (little-endian (+ section-address value) 8)))))
+                 (little-endian (if (zero? section) 0
+                                    (+ section-address value)) 8)))))
+
+(defn- width-exponent [width]
+  (case width 1 0, 2 1, 4 2, 8 3))
+
+(defn- encode-relocation [machine symbol-indexes section
+                          {:keys [offset type symbol] :as relocation}]
+  (when-not (= #{:offset :type :symbol} (set (keys relocation)))
+    (reject! "non-canonical Mach-O relocation" {:relocation relocation}))
+  (let [{:keys [code width pcrel?]} (get-in relocation-types [machine type])
+        symbol-index (get symbol-indexes symbol)]
+    (when-not code
+      (reject! "unsupported Mach-O relocation type"
+               {:machine machine :type type}))
+    (when-not (some? symbol-index)
+      (reject! "Mach-O relocation references an unknown symbol"
+               {:symbol symbol}))
+    (when-not (and (integer? offset) (<= 0 offset)
+                   (<= (+ offset width) (:size section)))
+      (reject! "Mach-O relocation exceeds its section"
+               {:section (:name section) :offset offset :width width}))
+    (vec (concat
+          (little-endian offset 4)
+          (little-endian
+           (bit-or symbol-index
+                   (if pcrel? (bit-shift-left 1 24) 0)
+                   (bit-shift-left (width-exponent width) 25)
+                   (bit-shift-left 1 27)
+                   (bit-shift-left code 28))
+           4)))))
 
 (defn encode-object
   "Encode a compact Mach-O 64-bit MH_OBJECT.
@@ -169,8 +231,11 @@
           command-size (+ segment-command-size build-command-size symtab-command-size)
           data-offset (+ 32 command-size)
           {:keys [address file-offset laid-out]} (layout-sections data-offset sections)
-          symoff (align-up file-offset 3)
+          {relocation-end :file-offset laid-out :laid-out}
+          (layout-relocations file-offset laid-out)
+          symoff (align-up relocation-end 3)
           {:keys [bytes offsets]} (string-table symbols)
+          symbol-indexes (zipmap (map :name symbols) (range))
           string-bytes (pad-to bytes (align-up (count bytes) 3))
           stroff (+ symoff (* 16 (count symbols)))
           header (vec (concat (little-endian 0xfeedfacf 4)
@@ -208,8 +273,19 @@
                                (vec (concat header segment-command
                                             build-command symtab-command))
                                laid-out)
+          relocation-data
+          (reduce (fn [out {:keys [reloc-offset relocations] :as section}]
+                    (if (seq relocations)
+                      (into (pad-to out reloc-offset)
+                            (mapcat #(encode-relocation machine symbol-indexes
+                                                        section %)
+                                    relocations))
+                      out))
+                  section-data
+                  laid-out)
           symbol-data (mapcat #(encode-symbol laid-out offsets %) symbols)
-          object (vec (concat (pad-to section-data symoff) symbol-data string-bytes))]
+          object (vec (concat (pad-to relocation-data symoff)
+                              symbol-data string-bytes))]
       (when (> (count object) max-object-bytes)
         (reject! "Mach-O object exceeds byte limit"
                  {:bytes (count object) :limit max-object-bytes}))

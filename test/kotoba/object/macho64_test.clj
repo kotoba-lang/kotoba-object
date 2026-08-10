@@ -32,7 +32,7 @@
 (deftest malformed-records-fail-closed
   (testing "unknown machine"
     (is (thrown? clojure.lang.ExceptionInfo
-                 (macho/encode-object (assoc object-record :machine :x86-64)))))
+                 (macho/encode-object (assoc object-record :machine :riscv64)))))
   (testing "oversize section name"
     (is (thrown? clojure.lang.ExceptionInfo
                  (macho/encode-object
@@ -42,8 +42,42 @@
     (is (thrown? clojure.lang.ExceptionInfo
                  (macho/encode-object
                   (assoc-in object-record [:symbols 0 :section] 3)))))
-  (testing "relocations remain an explicit gap"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"not supported yet"
+  (testing "relocations are typed and bounded"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"unknown symbol"
                           (macho/encode-object
                            (assoc-in object-record [:sections 0 :relocations]
-                                     [{:offset 0}]))))))
+                                     [{:offset 0 :type :aarch64/branch26
+                                       :symbol "_missing"}]))))))
+
+(deftest encodes-typed-arm64-external-relocation
+  (let [record (-> object-record
+                   (assoc-in [:sections 0 :bytes] [0 0 0 0x94])
+                   (assoc-in [:sections 0 :relocations]
+                             [{:offset 0 :type :aarch64/branch26
+                               :symbol "_external_call"}])
+                   (update :symbols conj
+                           {:name "_external_call" :section 0 :value 0
+                            :external? true}))
+        bytes (macho/encode-object record)
+        section-record-offset (+ 32 72)
+        reloff (reduce + (map-indexed (fn [i b] (bit-shift-left b (* 8 i)))
+                                      (subvec bytes (+ section-record-offset 56)
+                                              (+ section-record-offset 60))))]
+    (is (pos? reloff))
+    (is (= [0 0 0 0] (subvec bytes reloff (+ reloff 4))))
+    (is (= [4 0 0 0x2d] (subvec bytes (+ reloff 4) (+ reloff 8))))))
+
+(deftest encodes-x86-64-macos-object-and-branch-relocation
+  (let [record {:machine :x86-64 :platform :macos :minimum-os [11 0 0]
+                :sections [{:segment "__TEXT" :name "__text" :align 0
+                            :flags 0x80000000
+                            :bytes [0xe8 0 0 0 0 0xc3]
+                            :relocations [{:offset 1 :type :x86-64/branch
+                                           :symbol "_callee"}]}]
+                :symbols [{:name "_entry" :section 1 :value 0 :external? true}
+                          {:name "_callee" :section 0 :value 0 :external? true}]}
+        bytes (macho/encode-object record)]
+    (is (= [0xcf 0xfa 0xed 0xfe] (subvec bytes 0 4)))
+    (is (= [0x07 0x00 0x00 0x01] (subvec bytes 4 8)))
+    (is (= [0x03 0 0 0] (subvec bytes 8 12)))
+    (is (< (count bytes) 2048))))
