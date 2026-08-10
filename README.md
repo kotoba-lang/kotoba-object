@@ -7,7 +7,8 @@ executable containers. It deliberately does not own compiler lowering, target
 ABI policy, entry shims, memory maps, or linker policy.
 
 The contracts are `kotoba.object.elf64`, a validated ELF64 little-endian record
-encoder, and `kotoba.object.pe32plus`, a validated PE32+ record/image encoder.
+encoder, `kotoba.object.pe32plus`, a validated PE32+ record/image encoder, and
+`kotoba.object.macho64`, a validated Mach-O 64-bit relocatable-object encoder.
 Backends supply target decisions as data and use the returned byte vectors when
 assembling a complete image.
 
@@ -27,12 +28,17 @@ assembling a complete image.
 
 ## Boundary
 
-- owned here: ELF/PE identification, headers, program/section records,
+- owned here: ELF/PE/Mach-O identification, headers, load commands,
+  program/section records,
   symbols, RELA/data-directory records, little-endian integer encoding,
   bounded padding
 - owned by code generators/backends: instruction bytes, relocations to request,
   ABI shims, virtual addresses, section layout, capability/runtime policy
 - owned by orchestration: selecting ELF versus Mach-O/PE/Wasm and writing files
+
+The initial Mach-O contract emits compact `MH_OBJECT` files with typed
+sections, symbols, and platform build-version metadata. Relocations fail closed
+until a target-specific relocation request contract is introduced.
 
 ## Development
 
