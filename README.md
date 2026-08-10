@@ -30,15 +30,15 @@ assembling a complete image.
 
 - owned here: ELF/PE/Mach-O identification, headers, load commands,
   program/section records,
-  symbols, RELA/data-directory records, little-endian integer encoding,
+  symbols, typed Mach-O relocations, RELA/data-directory records,
+  little-endian integer encoding,
   bounded padding
 - owned by code generators/backends: instruction bytes, relocations to request,
   ABI shims, virtual addresses, section layout, capability/runtime policy
 - owned by orchestration: selecting ELF versus Mach-O/PE/Wasm and writing files
 
-The initial Mach-O contract emits compact `MH_OBJECT` files with typed
-sections, symbols, and platform build-version metadata. Relocations fail closed
-until a target-specific relocation request contract is introduced.
+The Mach-O contract emits compact ARM64 and x86-64 `MH_OBJECT` files with typed
+sections, symbols, external relocations, and platform build-version metadata.
 
 ## Development
 
