@@ -6,9 +6,10 @@ Target-neutral object-file construction contracts for Kotoba.
 executable containers. It deliberately does not own compiler lowering, target
 ABI policy, entry shims, memory maps, or linker policy.
 
-The initial contract is `kotoba.object.elf64`, a small, validated ELF64
-little-endian record encoder. Backends supply target decisions as data and use
-the returned byte vectors when assembling a complete image.
+The contracts are `kotoba.object.elf64`, a validated ELF64 little-endian record
+encoder, and `kotoba.object.pe32plus`, a validated PE32+ record/image encoder.
+Backends supply target decisions as data and use the returned byte vectors when
+assembling a complete image.
 
 ```clojure
 (require '[kotoba.object.elf64 :as elf64])
@@ -26,8 +27,9 @@ the returned byte vectors when assembling a complete image.
 
 ## Boundary
 
-- owned here: ELF identification, headers, program/section records,
-  symbols, RELA records, little-endian integer encoding, bounded padding
+- owned here: ELF/PE identification, headers, program/section records,
+  symbols, RELA/data-directory records, little-endian integer encoding,
+  bounded padding
 - owned by code generators/backends: instruction bytes, relocations to request,
   ABI shims, virtual addresses, section layout, capability/runtime policy
 - owned by orchestration: selecting ELF versus Mach-O/PE/Wasm and writing files
