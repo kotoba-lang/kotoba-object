@@ -152,8 +152,16 @@
   (when-not (and (integer? type) (<= 0 type 0xffffffff))
     (throw (ex-info "ELF relocation type must be an unsigned 32-bit integer"
                     {:type type})))
+  ;; `r_info` is defined by ELF64 as `(symbol_index << 32) | type`, so its eight
+  ;; little-endian bytes ARE `type`'s four followed by `symbol_index`'s four.
+  ;; Emitting the halves directly says that, and avoids building a value that
+  ;; needs arbitrary precision to hold: the previous form multiplied by 2^32
+  ;; with `*'`, which promotes past Long on the JVM and has no cljs equivalent.
+  ;; It also makes `symbol-index` range-checked -- it never was, so an index of
+  ;; 2^32 or more used to be silently promoted and encoded wrong.
   (vec (concat (little-endian offset 8)
-               (little-endian (+ (*' symbol-index 0x100000000) type) 8)
+               (little-endian type 4)
+               (little-endian symbol-index 4)
                (little-endian addend 8))))
 
 (defn encode-symbol

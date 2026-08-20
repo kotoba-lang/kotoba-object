@@ -53,3 +53,35 @@
                                               :machine :mips})))
   (is (thrown-with-msg? clojure.lang.ExceptionInfo #"relocation type"
                         (elf64/encode-rela {:type -1}))))
+
+(deftest rela-halves-agree-with-the-promoted-product
+  ;; `encode-rela` used to build `r_info` as `(+ (*' symbol-index 0x100000000)
+  ;; type)` and encode that as eight bytes. `*'` promotes past Long, which the
+  ;; JVM allows and cljs has no equivalent for. ELF64 defines r_info as
+  ;; `(symbol_index << 32) | type`, so the eight little-endian bytes are type's
+  ;; four followed by symbol_index's four -- no wide value needed.
+  ;;
+  ;; The oracle is the OLD formula; the subject is `encode-rela` itself. An
+  ;; earlier version of this test rebuilt both sides locally and therefore
+  ;; passed even when the halves were emitted in the wrong order -- it never
+  ;; called the function it claimed to pin.
+  (doseq [symbol-index [0 1 2 255 256 0x7fffffff 0x80000000 0xfffffffe 0xffffffff]
+          type [0 1 255 256 0x7fffffff 0x80000000 0xffffffff]
+          addend [0 1 -1 4096]]
+    (let [expected (vec (concat (elf64/little-endian 0 8)
+                                (elf64/little-endian
+                                 (+ (*' symbol-index 0x100000000) type) 8)
+                                (elf64/little-endian addend 8)))
+          actual (elf64/encode-rela {:offset 0 :symbol-index symbol-index
+                                     :type type :addend addend})]
+      (is (= expected actual)
+          (str "r_info differs at symbol-index=" symbol-index
+               " type=" type " addend=" addend)))))
+
+(deftest rela-now-rejects-an-out-of-range-symbol-index
+  ;; The old form never checked symbol-index: `*'` promoted it and the extra
+  ;; bits fell outside the eight bytes that got written. Encoding the high half
+  ;; as a 4-byte field makes it a real bound.
+  (is (thrown? clojure.lang.ExceptionInfo
+               (elf64/encode-rela {:offset 0 :symbol-index 0x100000000 :type 0})))
+  (is (vector? (elf64/encode-rela {:offset 0 :symbol-index 0xffffffff :type 1}))))
