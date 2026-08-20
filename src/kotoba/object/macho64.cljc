@@ -37,8 +37,18 @@
 (defn- reject! [message data]
   (throw (ex-info message data)))
 
-(defn- unsigned-limit [width]
-  (reduce *' 1 (repeat width 256)))
+;; 256^0 .. 256^7 -- powers of two below 2^56, exact as both a JVM long and a
+;; JS double. Mirrors `kotoba.object.elf64`; see there for why 256^8 is absent.
+(def ^:private byte-scale
+  [1 256 65536 16777216 4294967296 1099511627776 281474976710656 72057594037927936])
+
+;; Exclusive upper bound per width. This encoder is unsigned-only, so there is
+;; no lower bound to carry. Spelled as literals because at width 8 the bound is
+;; 2^64, which is past Long on the JVM -- the reason the previous
+;; `(reduce *' 1 (repeat width 256))` had to promote, and the reason this file
+;; could not be loaded by ClojureScript at all.
+(def ^:private width-limit
+  {1 256 2 65536 4 4294967296 8 18446744073709551616})
 
 (defn little-endian
   "Encode an unsigned integer in exactly `width` bytes without truncation."
@@ -46,11 +56,13 @@
   (when-not (contains? #{1 2 4 8} width)
     (reject! "Mach-O integer width must be 1, 2, 4, or 8 bytes"
              {:width width}))
-  (let [limit (unsigned-limit width)]
+  (let [limit (width-limit width)]
     (when-not (and (integer? n) (<= 0 n) (< n limit))
       (reject! "Mach-O integer does not fit requested width"
                {:value n :width width}))
-    (mapv #(mod (quot n (unsigned-limit %)) 256) (range width))))
+    ;; `n` is non-negative here, so `quot` and floored division agree and the
+    ;; largest value handled is `n` itself -- 2^64 is only ever a comparison.
+    (mapv #(mod (quot n (byte-scale %)) 256) (range width))))
 
 (defn align-up [n exponent]
   (when-not (and (integer? n) (<= 0 n)

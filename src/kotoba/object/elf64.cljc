@@ -27,8 +27,32 @@
    :rela 4
    :nobits 8})
 
-(defn- unsigned-limit [width]
-  (reduce *' 1 (repeat width 256)))
+;; 256^0 .. 256^7. Every entry is a power of two below 2^56, so each is exact
+;; both as a JVM long and as a JS double -- which is what lets byte extraction
+;; below run identically on either runtime with no promotion and no widening.
+;; 256^8 is deliberately absent: see `little-endian`.
+(def ^:private byte-scale
+  [1 256 65536 16777216 4294967296 1099511627776 281474976710656 72057594037927936])
+
+;; Floored division. `quot` truncates toward zero, which is the wrong rounding
+;; for two's complement: the byte identity below needs floor. Clojure has no
+;; portable floor-div (`Math/floorDiv` is JVM-only), so it is spelled out.
+(defn- floor-div [a b]
+  (let [q (quot a b)]
+    (if (and (neg? a) (not (zero? (rem a b)))) (dec q) q)))
+
+;; The inclusive lower and exclusive upper bound for `width` bytes, as a signed
+;; minimum and an unsigned maximum. Written as literals rather than computed by
+;; `(reduce *' 1 (repeat width 256))`, because at width 8 that product is 2^64:
+;; past Long on the JVM (hence the promoting `*'` this replaces) and past exact
+;; integer range in cljs. Both bounds here are powers of two, so both are exact
+;; on either runtime -- and 2^64 appears ONLY as a comparison bound, never as an
+;; operand of the encoding.
+(def ^:private width-bounds
+  {1 [-128 256]
+   2 [-32768 65536]
+   4 [-2147483648 4294967296]
+   8 [-9223372036854775808 18446744073709551616]})
 
 (defn little-endian
   "Encode integer `n` in exactly `width` little-endian bytes.
@@ -39,14 +63,16 @@
   (when-not (contains? #{1 2 4 8} width)
     (throw (ex-info "ELF integer width must be 1, 2, 4, or 8 bytes"
                     {:width width})))
-  (let [limit (unsigned-limit width)
-        minimum (- (quot limit 2))]
+  (let [[minimum limit] (width-bounds width)]
     (when-not (and (integer? n) (<= minimum n) (< n limit))
       (throw (ex-info "ELF integer does not fit requested width"
                       {:value n :width width})))
-    (let [encoded (if (neg? n) (+ limit n) n)]
-      (mapv #(mod (quot encoded (unsigned-limit %)) 256)
-            (range width)))))
+    ;; `mod (floor-div n 256^i) 256` is the two's-complement byte of `n` at
+    ;; position i for BOTH signs, so no `(+ limit n)` fixup is needed. That
+    ;; matters beyond tidiness: at width 8 the old fixup formed 2^64 + n, and in
+    ;; cljs that lands on doubles spaced 2048 apart -- losing precisely the low
+    ;; bytes this then reads back. Here the largest value handled is |n| itself.
+    (mapv #(mod (floor-div n (byte-scale %)) 256) (range width))))
 
 (defn pad-to
   "Return `bytes` padded with zeroes to exactly `size` bytes."

@@ -1,6 +1,6 @@
 (ns kotoba.object.elf64-test
   (:require [clojure.test :refer [deftest is testing]]
-            [kotoba.object.elf64 :as elf64]))
+            [kotoba.object.elf64 :as elf64 :refer [little-endian]]))
 
 (deftest integer-and-padding-contract
   (is (= [0x78 0x56 0x34 0x12]
@@ -85,3 +85,33 @@
   (is (thrown? clojure.lang.ExceptionInfo
                (elf64/encode-rela {:offset 0 :symbol-index 0x100000000 :type 0})))
   (is (vector? (elf64/encode-rela {:offset 0 :symbol-index 0xffffffff :type 1}))))
+
+(deftest little-endian-agrees-with-the-promoted-implementation
+  ;; The oracle is the ORIGINAL implementation, kept here verbatim, including
+  ;; the promoting `*'` and the `(+ limit n)` two's-complement fixup. The
+  ;; subject is the shipped `little-endian`. If they ever disagree on any value
+  ;; either can represent, this fails.
+  (let [old-limit (fn [width] (reduce *' 1 (repeat width 256)))
+        old-le (fn [n width]
+                 (let [limit (old-limit width)
+                       encoded (if (neg? n) (+ limit n) n)]
+                   (mapv #(mod (quot encoded (old-limit %)) 256) (range width))))]
+    (doseq [width [1 2 4 8]
+            :let [[minimum limit] [(- (quot (old-limit width) 2)) (old-limit width)]]
+            n (distinct
+               (concat [0 1 -1 2 -2 127 128 255 256 -127 -128 -129 4096 -4096]
+                       [minimum (inc minimum) (+ minimum 2)]
+                       [(dec limit) (- limit 2)]
+                       [(quot limit 2) (dec (quot limit 2)) (- (quot limit 2))]
+                       ;; a deterministic spread across the whole width
+                       (map #(- (quot limit (+ 3 %)) 7) (range 6))
+                       (map #(- 7 (quot limit (+ 3 %))) (range 6))))
+            :when (and (<= minimum n) (< n limit))]
+      (is (= (old-le n width) (little-endian n width))
+          (str "little-endian differs at n=" n " width=" width)))))
+
+(deftest little-endian-rejects-what-it-cannot-represent
+  (doseq [[n width] [[256 1] [-129 1] [65536 2] [-32769 2]
+                     [4294967296 4] [-2147483649 4]]]
+    (is (thrown? clojure.lang.ExceptionInfo (little-endian n width))
+        (str "expected rejection of n=" n " width=" width))))
