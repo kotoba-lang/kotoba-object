@@ -8,7 +8,8 @@
    portability nothing had ever executed. A rename is not evidence; running is."
   (:require [clojure.test :refer [deftest is]]
             [kotoba.object.elf64 :as elf64]
-            [kotoba.object.macho64 :as macho64]))
+            [kotoba.object.macho64 :as macho64]
+            [kotoba.object.pe32plus :as pe32plus]))
 
 (deftest elf-little-endian-encodes-both-signs
   (is (= [0] (elf64/little-endian 0 1)))
@@ -44,3 +45,23 @@
           1 0 0 0 7 0 0 0
           0 0 0 0 0 0 0 0]
          (elf64/encode-rela {:offset 0 :symbol-index 7 :type 1 :addend 0}))))
+
+(deftest section-names-encode-as-ascii-on-both-runtimes
+  ;; This suite previously covered `little-endian` only, so it proved the files
+  ;; LOAD under ClojureScript without proving the name paths RUN there.
+  ;; `(int c)` yields a code point on the JVM, where iterating a string gives
+  ;; Characters, and NaN in cljs, where it gives single-character strings --
+  ;; so the validator rejected every name. Found 2026-08-20 by building a real
+  ;; PE image from amu, not by reading.
+  (is (= [0x74 0x65 0x78 0x74] (vec (take 4 (pe32plus/encode-section-header
+                                             {:name "text" :virtual-size 1 :rva 0x1000
+                                              :raw-size 512 :raw-offset 0x200
+                                              :characteristics 0})))))
+  (is (thrown? #?(:clj Exception :cljs js/Error)
+               (pe32plus/encode-section-header
+                {:name "" :virtual-size 1 :rva 0x1000 :raw-size 512
+                 :raw-offset 0x200 :characteristics 0})))
+  (is (thrown? #?(:clj Exception :cljs js/Error)
+               (pe32plus/encode-section-header
+                {:name "toolongname" :virtual-size 1 :rva 0x1000 :raw-size 512
+                 :raw-offset 0x200 :characteristics 0}))))

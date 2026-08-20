@@ -34,6 +34,15 @@
 (def ^:private max-relocation-count 65535)
 (def ^:private max-object-bytes (* 64 1024 1024))
 
+;; A character's code point, portably. `(int c)` works on the JVM, where
+;; iterating a string yields Characters; in ClojureScript it yields
+;; single-character STRINGS and `int` gives NaN, so every comparison against it
+;; is false and the validator below rejects perfectly good ASCII. Measured
+;; 2026-08-20 under nbb: a PE image build failed with "PE section name must be
+;; 1-8 printable ASCII bytes" for the name "text".
+(defn- code-point [c]
+  #?(:clj (int c) :cljs (.charCodeAt (str c) 0)))
+
 (defn- reject! [message data]
   (throw (ex-info message data)))
 
@@ -89,10 +98,10 @@
 
 (defn- fixed-name [field value]
   (when-not (and (string? value) (<= 1 (count value) 16)
-                 (every? #(<= 0x20 (int %) 0x7e) value))
+                 (every? #(<= 0x20 (code-point %) 0x7e) value))
     (reject! "Mach-O name must be 1-16 printable ASCII bytes"
              {:field field :value value}))
-  (pad-to (mapv int value) 16))
+  (pad-to (mapv code-point value) 16))
 
 (defn- version-field [field version]
   (when-not (and (vector? version) (= 3 (count version))
@@ -155,10 +164,10 @@
   (reduce (fn [{:keys [bytes offsets]} {:keys [name]}]
             (when-not (and (string? name) (str/starts-with? name "_")
                            (<= 2 (count name) 255)
-                           (every? #(<= 0x20 (int %) 0x7e) name))
+                           (every? #(<= 0x20 (code-point %) 0x7e) name))
               (reject! "Mach-O symbol must be underscore-prefixed printable ASCII"
                        {:name name}))
-            {:bytes (into bytes (concat (map int name) [0]))
+            {:bytes (into bytes (concat (map code-point name) [0]))
              :offsets (assoc offsets name (count bytes))})
           {:bytes [0] :offsets {}}
           symbols))
