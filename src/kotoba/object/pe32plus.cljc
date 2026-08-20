@@ -32,12 +32,21 @@
                       {:size size :actual (count bytes)})))
     (into bytes (repeat (- size (count bytes)) 0))))
 
+;; A character's code point, portably. `(int c)` works on the JVM, where
+;; iterating a string yields Characters; in ClojureScript it yields
+;; single-character STRINGS and `int` gives NaN, so every comparison against it
+;; is false and the validator below rejects perfectly good ASCII. Measured
+;; 2026-08-20 under nbb: a PE image build failed with "PE section name must be
+;; 1-8 printable ASCII bytes" for the name "text".
+(defn- code-point [c]
+  #?(:clj (int c) :cljs (.charCodeAt (str c) 0)))
+
 (defn- ascii-bytes [value]
   (when-not (and (string? value) (<= 1 (count value) 8)
-                 (every? #(<= 0x20 (int %) 0x7e) value))
+                 (every? #(<= 0x20 (code-point %) 0x7e) value))
     (throw (ex-info "PE section name must be 1-8 printable ASCII bytes"
                     {:name value})))
-  (mapv int value))
+  (mapv code-point value))
 
 (defn encode-section-header
   [{:keys [name virtual-size rva raw-size raw-offset characteristics]}]
