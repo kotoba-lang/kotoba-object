@@ -11,6 +11,26 @@
             [kotoba.object.macho64 :as macho64]
             [kotoba.object.pe32plus :as pe32plus]))
 
+(deftest pe-little-endian-encodes-all-eight-bytes
+  ;; `kotoba.object.pe32plus/little-endian` was the one member of this family
+  ;; still accumulating with `unsigned-bit-shift-right` when the other two had
+  ;; been moved to `byte-scale`. cljs takes shift counts mod 32, so at width 8
+  ;; bytes 4 through 7 repeated bytes 0 through 3. Nothing here reached width 8
+  ;; before: the only pe32plus call in this file goes through
+  ;; `encode-section-header`, whose fields are all four bytes wide.
+  (is (= [0x78 0x56 0x34 0x12] (pe32plus/little-endian 0x12345678 4)))
+  (is (= [0 0 0x40 0 0 0 0 0] (pe32plus/little-endian 0x400000 8))
+      "the default image base -- inside 32 bits, where the old code was right")
+  (is (= [0 0 0 0x40 1 0 0 0] (pe32plus/little-endian 0x140000000 8))
+      "a 64-bit image base -- the old code answered [0 0 0 64 0 0 0 64]")
+  (is (= [0 0 0 0 0 0 0 0x80] (pe32plus/little-endian 9223372036854775808 8))
+      "the top byte alone, at the shift that wrapped hardest")
+  (is (= [0xff 0xff 0xff 0xff 0xff 0 0 0] (pe32plus/little-endian 1099511627775 8))
+      "five bytes set, straddling the 32-bit boundary")
+  (is (thrown? #?(:clj clojure.lang.ExceptionInfo :cljs js/Error)
+               (pe32plus/little-endian -1 8))
+      "this encoder is unsigned; the signed one is elf64's"))
+
 (deftest elf-little-endian-encodes-both-signs
   (is (= [0] (elf64/little-endian 0 1)))
   (is (= [255] (elf64/little-endian 255 1)))

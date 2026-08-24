@@ -10,11 +10,36 @@
 (def max-section-count 32)
 (def max-image-bytes (* 64 1024 1024))
 
-(defn little-endian [n width]
+;; 2^(8*i). Powers of two, exact as a JVM long and as a JS double alike --
+;; the same table `kotoba.object.elf64` and `.macho64` carry, for the same
+;; reason. This file is the one member of the family that did not get it when
+;; the others did.
+(def ^:private byte-scale
+  [1 256 65536 16777216 4294967296 1099511627776 281474976710656 72057594037927936])
+
+(defn little-endian
+  "Encode a non-negative integer in exactly `width` little-endian bytes.
+
+  This used to be `(bit-and (unsigned-bit-shift-right (long n) (* 8 i)) 0xff)`.
+  cljs bitwise ops take their shift count mod 32, so at width 8 -- which
+  `image-base`, `stack-reserve`, `stack-commit`, `heap-reserve` and
+  `heap-commit` all use -- bytes 4 through 7 repeated bytes 0 through 3.
+  Measured 2026-08-25 under nbb: `(little-endian 0x140000000 8)`, the image
+  base link.exe picks for a 64-bit PE, encoded as `[0 0 0 64 0 0 0 64]`
+  instead of `[0 0 0 64 1 0 0 0]`.
+
+  No caller in this workspace reaches it today: every default here is below
+  2^32 (`image-base` 0x400000, the stack and heap fields 0x100000/0x1000) and
+  nothing overrides them, so all four high bytes are zero. That makes the
+  defect latent, not absent -- the width-8 contract is what this function
+  offers, and it was wrong for four of the eight bytes it promises.
+
+  `n` above 2^53 is not exactly representable on ClojureScript. That limit is
+  the runtime's, not this function's, and it is above every field PE32+ has."
+  [n width]
   (when-not (and (integer? n) (integer? width) (<= 1 width 8) (<= 0 n))
     (throw (ex-info "invalid little-endian field" {:value n :width width})))
-  (mapv #(bit-and (unsigned-bit-shift-right (long n) (* 8 %)) 0xff)
-        (range width)))
+  (mapv #(mod (quot n (nth byte-scale %)) 256) (range width)))
 
 (defn align-up [n alignment]
   (when-not (and (integer? n) (<= 0 n)
