@@ -25,3 +25,48 @@
   (testing "oversize section name"
     (is (thrown? clojure.lang.ExceptionInfo
                  (pe/encode-image (assoc-in image [:sections 0 :name] ".too-long"))))))
+
+;; boot: the virtual-placement rules `encode-image` gained on 2026-09-02.
+;; Every case below produced a byte-valid PE before that date; the first one
+;; is the shape amu's `package-efi` emitted for any Kotoba UEFI application
+;; whose `.text` grew past one page, and it is the reason these exist.
+(def ^:private two-section
+  {:machine :x86-64 :entry-rva 0x1000 :text-rva 0x1000 :image-size 0x3000
+   :sections [{:name ".text" :virtual-size 0x40 :rva 0x1000
+               :raw-size 0x200 :raw-offset 0x200
+               :characteristics 0x60000020 :bytes (vec (repeat 0x40 0xc3))}
+              {:name ".data" :virtual-size 0x50 :rva 0x2000
+               :raw-size 0x200 :raw-offset 0x400
+               :characteristics 0xc0000040 :bytes (vec (repeat 0x50 0))}]})
+
+(deftest virtual-placement-fails-closed
+  (testing "the two-section baseline still encodes"
+    (is (= 0x600 (count (pe/encode-image two-section)))))
+  (testing "a .text that outgrows its page is refused, not silently overlapped"
+    (is (= "overlapping PE virtual sections"
+           (try (pe/encode-image
+                 (-> two-section
+                     (assoc-in [:sections 0 :virtual-size] 0x1400)
+                     (assoc-in [:sections 0 :raw-size] 0x1400)
+                     (assoc-in [:sections 0 :bytes] (vec (repeat 0x1400 0xc3)))
+                     (assoc-in [:sections 1 :raw-offset] 0x1600)))
+                (catch clojure.lang.ExceptionInfo error (ex-message error))))))
+  (testing "an unaligned virtual address is refused"
+    (is (= "PE section virtual address is not section-aligned"
+           (try (pe/encode-image (assoc-in two-section [:sections 1 :rva] 0x2004)
+)
+                (catch clojure.lang.ExceptionInfo error (ex-message error))))))
+  (testing "a section mapped over the headers is refused"
+    (is (= "PE section virtual address overlaps the headers"
+           (try (pe/encode-image (-> two-section
+                                     (assoc-in [:sections 0 :rva] 0)
+                                     (assoc :entry-rva 0 :text-rva 0)))
+                (catch clojure.lang.ExceptionInfo error (ex-message error))))))
+  (testing "SizeOfImage that does not cover the last section is refused"
+    (is (= "PE image size does not cover its sections"
+           (try (pe/encode-image (assoc two-section :image-size 0x2000))
+                (catch clojure.lang.ExceptionInfo error (ex-message error))))))
+  (testing "an unaligned SizeOfImage is refused"
+    (is (= "PE image size is not section-aligned"
+           (try (pe/encode-image (assoc two-section :image-size 0x3200))
+                (catch clojure.lang.ExceptionInfo error (ex-message error)))))))

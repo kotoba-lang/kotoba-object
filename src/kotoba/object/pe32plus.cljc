@@ -148,6 +148,55 @@
         (throw (ex-info "PE section raw size is not canonical"
                         {:section (:name section) :raw-size (:raw-size section)
                          :bytes (count (:bytes section))}))))
+    ;; boot: VIRTUAL placement, which this encoder did not look at until
+    ;; 2026-09-02. Every check above is about raw file offsets, so a caller
+    ;; that laid its sections out with frozen RVAs -- amu's `package-efi`
+    ;; froze .text at 0x1000 and .data at 0x2000 -- produced a VALID FILE
+    ;; whose second section is mapped over the tail of the first as soon as
+    ;; the first grows past one page. That is silent corruption at run time,
+    ;; not a refusal at build time: the bytes are all present in the file and
+    ;; every existing assertion passes. The loader is the first thing that
+    ;; disagrees, and it does so by executing the wrong page.
+    ;;
+    ;; The four rules are the PE loader's own, restated where the image is
+    ;; built: an RVA is section-aligned, no section starts inside the mapped
+    ;; headers, two sections' mapped spans do not overlap, and SizeOfImage
+    ;; covers every span. A section's mapped span is its virtual size rounded
+    ;; UP to the section alignment, because that is the granularity at which
+    ;; the loader assigns pages -- rounding down would admit exactly the
+    ;; overlap this exists to refuse.
+    (let [headers-span (align-up headers-size section-alignment)]
+      (doseq [{:keys [name rva virtual-size]} sections]
+        (when-not (and (integer? rva) (integer? virtual-size)
+                       (<= 0 rva 0xffffffff) (<= 0 virtual-size 0xffffffff))
+          (throw (ex-info "invalid PE section virtual placement"
+                          {:section name :rva rva :virtual-size virtual-size})))
+        (when-not (zero? (mod rva section-alignment))
+          (throw (ex-info "PE section virtual address is not section-aligned"
+                          {:section name :rva rva
+                           :section-alignment section-alignment})))
+        (when (< rva headers-span)
+          (throw (ex-info "PE section virtual address overlaps the headers"
+                          {:section name :rva rva :headers-span headers-span}))))
+      (doseq [[left right] (partition 2 1 (sort-by :rva sections))]
+        (when (> (+ (:rva left) (align-up (:virtual-size left) section-alignment))
+                 (:rva right))
+          (throw (ex-info "overlapping PE virtual sections"
+                          {:left (:name left) :right (:name right)
+                           :left-rva (:rva left)
+                           :left-virtual-size (:virtual-size left)
+                           :right-rva (:rva right)}))))
+      (let [required (reduce max headers-span
+                             (map #(+ (:rva %)
+                                      (align-up (:virtual-size %) section-alignment))
+                                  sections))]
+        (when-not (and (integer? image-size) (<= required image-size))
+          (throw (ex-info "PE image size does not cover its sections"
+                          {:image-size image-size :required required})))
+        (when-not (zero? (mod image-size section-alignment))
+          (throw (ex-info "PE image size is not section-aligned"
+                          {:image-size image-size
+                           :section-alignment section-alignment})))))
     (let [text (first sections)
           initialized-size (reduce + 0 (map :raw-size (rest sections)))
           optional (encode-optional-header
