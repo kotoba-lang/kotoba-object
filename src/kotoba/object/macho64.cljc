@@ -4,7 +4,7 @@
   Callers own target policy, section ordering, instruction/data bytes, symbol
   selection, and relocation requests. This namespace owns Mach-O records and
   their compact MH_OBJECT file layout, including typed external relocations."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (def ^:private machines
   {:aarch64 {:cpu-type 0x0100000c :cpu-subtype 0}
