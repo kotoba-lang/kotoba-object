@@ -3,7 +3,7 @@
 
   This namespace owns container bytes only. Callers retain target policy,
   entry shims, section placement decisions, imports, and relocation choice."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (def machine-codes {:x86-64 0x8664 :aarch64 0xaa64})
 (def subsystem-codes {:efi-application 10})
