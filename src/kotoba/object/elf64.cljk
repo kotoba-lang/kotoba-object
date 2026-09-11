@@ -1,4 +1,5 @@
-(ns kotoba.object.elf64)
+(ns kotoba.object.elf64
+  {:kotoba/export [encode-header encode-program-header encode-rela encode-section-header encode-symbol little-endian pad-to]})
 
 (def ^:private object-types
   {:relocatable 1

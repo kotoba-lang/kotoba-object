@@ -4,6 +4,7 @@
   Callers own target policy, section ordering, instruction/data bytes, symbol
   selection, and relocation requests. This namespace owns Mach-O records and
   their compact MH_OBJECT file layout, including typed external relocations."
+  {:kotoba/export [align-up encode-object little-endian]}
   (:require [kotoba.lang.text :as str]))
 
 (def ^:private machines
