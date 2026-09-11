@@ -43,5 +43,5 @@ sections, symbols, external relocations, and platform build-version metadata.
 ## Development
 
 ```sh
-clojure -M:test
+kbb -M:test
 ```

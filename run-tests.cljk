@@ -1,7 +1,7 @@
 (ns run-tests
   "The portable object-encoding suite on nbb -- no JVM anywhere in this path.
 
-   nbb --classpath \"src:test\" run-tests.cljk"
+   kbb --backend sci --classpath \"src:test\" run-tests.cljk"
   (:require [cljs.test :as t]
             [kotoba.object.portable-test]))
 
