@@ -1,5 +1,5 @@
 (ns kotoba.object.macho64-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.object.macho64 :as macho]))
 
 (def object-record
