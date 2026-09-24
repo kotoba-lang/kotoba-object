@@ -1,5 +1,5 @@
 (ns kotoba.object.pe32plus-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.object.pe32plus :as pe]))
 
 (def image

@@ -1,5 +1,5 @@
 (ns kotoba.object.elf64-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.object.elf64 :as elf64 :refer [little-endian]]))
 
 (deftest integer-and-padding-contract

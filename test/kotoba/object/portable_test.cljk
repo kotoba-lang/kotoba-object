@@ -6,7 +6,7 @@
    a claim that they load under ClojureScript. Until 2026-08-20 that claim was
    false: both used `*'`, which cljs cannot resolve, so the extension asserted a
    portability nothing had ever executed. A rename is not evidence; running is."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [kotoba.object.elf64 :as elf64]
             [kotoba.object.macho64 :as macho64]
             [kotoba.object.pe32plus :as pe32plus]))
