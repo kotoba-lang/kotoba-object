@@ -42,7 +42,11 @@
 ;; 2026-08-20 under nbb: a PE image build failed with "PE section name must be
 ;; 1-8 printable ASCII bytes" for the name "text".
 (defn- code-point [c]
-  #?(:clj (int c) :cljs (.charCodeAt (str c) 0)))
+  ;; :default -- the Kotoba reader's only feature is :kotoba, so a #?-only
+  ;; body read as nothing ("function body is empty", adr-2609111900). The
+  ;; :cljs form, so the compiler refuses the host call by name here.
+  #?(:clj (int c) :cljs (.charCodeAt (str c) 0)
+     :default (.charCodeAt (str c) 0)))
 
 (defn- reject! [message data]
   (throw (ex-info message data)))
