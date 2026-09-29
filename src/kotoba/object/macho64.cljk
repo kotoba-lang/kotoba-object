@@ -5,35 +5,74 @@
   selection, and relocation requests. This namespace owns Mach-O records and
   their compact MH_OBJECT file layout, including typed external relocations."
   {:kotoba/export [align-up encode-object little-endian]}
-  (:require [kotoba.lang.text :as str]))
+  (:require #?@(:kotoba [] :default [[kotoba.lang.text :as str]])))
 
-(def ^:private machines
-  {:aarch64 {:cpu-type 0x0100000c :cpu-subtype 0}
-   :x86-64 {:cpu-type 0x01000007 :cpu-subtype 3}})
 
-(def ^:private relocation-types
-  {:aarch64
-   {:aarch64/unsigned {:code 0 :width 8 :pcrel? false}
-    :aarch64/branch26 {:code 2 :width 4 :pcrel? true}
-    :aarch64/page21 {:code 3 :width 4 :pcrel? true}
-    :aarch64/pageoff12 {:code 4 :width 4 :pcrel? false}}
-   :x86-64
-   {:x86-64/unsigned {:code 0 :width 8 :pcrel? false}
-    :x86-64/signed {:code 1 :width 4 :pcrel? true}
-    :x86-64/branch {:code 2 :width 4 :pcrel? true}
-    :x86-64/got-load {:code 3 :width 4 :pcrel? true}
-    :x86-64/got {:code 4 :width 4 :pcrel? true}
-    :x86-64/tlv {:code 9 :width 4 :pcrel? true}}})
+#?(:clj
+   (def ^:private machines
+     {:aarch64 {:cpu-type 0x0100000c :cpu-subtype 0}
+      :x86-64 {:cpu-type 0x01000007 :cpu-subtype 3}})
+   :cljs
+   (def ^:private machines
+     {:aarch64 {:cpu-type 0x0100000c :cpu-subtype 0}
+      :x86-64 {:cpu-type 0x01000007 :cpu-subtype 3}}))
 
-(def ^:private platforms
-  {:macos 1 :ios 2 :tvos 3 :watchos 4 :maccatalyst 6
-   :ios-simulator 7 :tvos-simulator 8 :watchos-simulator 9
-   :driverkit 10 :visionos 11 :visionos-simulator 12})
+#?(:clj
+   (def ^:private relocation-types
+     {:aarch64
+      {:aarch64/unsigned {:code 0 :width 8 :pcrel? false}
+       :aarch64/branch26 {:code 2 :width 4 :pcrel? true}
+       :aarch64/page21 {:code 3 :width 4 :pcrel? true}
+       :aarch64/pageoff12 {:code 4 :width 4 :pcrel? false}}
+      :x86-64
+      {:x86-64/unsigned {:code 0 :width 8 :pcrel? false}
+       :x86-64/signed {:code 1 :width 4 :pcrel? true}
+       :x86-64/branch {:code 2 :width 4 :pcrel? true}
+       :x86-64/got-load {:code 3 :width 4 :pcrel? true}
+       :x86-64/got {:code 4 :width 4 :pcrel? true}
+       :x86-64/tlv {:code 9 :width 4 :pcrel? true}}})
+   :cljs
+   (def ^:private relocation-types
+     {:aarch64
+      {:aarch64/unsigned {:code 0 :width 8 :pcrel? false}
+       :aarch64/branch26 {:code 2 :width 4 :pcrel? true}
+       :aarch64/page21 {:code 3 :width 4 :pcrel? true}
+       :aarch64/pageoff12 {:code 4 :width 4 :pcrel? false}}
+      :x86-64
+      {:x86-64/unsigned {:code 0 :width 8 :pcrel? false}
+       :x86-64/signed {:code 1 :width 4 :pcrel? true}
+       :x86-64/branch {:code 2 :width 4 :pcrel? true}
+       :x86-64/got-load {:code 3 :width 4 :pcrel? true}
+       :x86-64/got {:code 4 :width 4 :pcrel? true}
+       :x86-64/tlv {:code 9 :width 4 :pcrel? true}}}))
 
-(def ^:private max-section-count 32)
-(def ^:private max-symbol-count 4096)
-(def ^:private max-relocation-count 65535)
-(def ^:private max-object-bytes (* 64 1024 1024))
+#?(:clj
+   (def ^:private platforms
+     {:macos 1 :ios 2 :tvos 3 :watchos 4 :maccatalyst 6
+      :ios-simulator 7 :tvos-simulator 8 :watchos-simulator 9
+      :driverkit 10 :visionos 11 :visionos-simulator 12})
+   :cljs
+   (def ^:private platforms
+     {:macos 1 :ios 2 :tvos 3 :watchos 4 :maccatalyst 6
+      :ios-simulator 7 :tvos-simulator 8 :watchos-simulator 9
+      :driverkit 10 :visionos 11 :visionos-simulator 12}))
+
+#?(:clj
+   (def ^:private max-section-count 32)
+   :cljs
+   (def ^:private max-section-count 32))
+#?(:clj
+   (def ^:private max-symbol-count 4096)
+   :cljs
+   (def ^:private max-symbol-count 4096))
+#?(:clj
+   (def ^:private max-relocation-count 65535)
+   :cljs
+   (def ^:private max-relocation-count 65535))
+#?(:clj
+   (def ^:private max-object-bytes (* 64 1024 1024))
+   :cljs
+   (def ^:private max-object-bytes (* 64 1024 1024)))
 
 ;; A character's code point, portably. `(int c)` works on the JVM, where
 ;; iterating a string yields Characters; in ClojureScript it yields
@@ -41,278 +80,1182 @@
 ;; is false and the validator below rejects perfectly good ASCII. Measured
 ;; 2026-08-20 under nbb: a PE image build failed with "PE section name must be
 ;; 1-8 printable ASCII bytes" for the name "text".
-(defn- code-point [c]
-  ;; :default -- the Kotoba reader's only feature is :kotoba, so a #?-only
-  ;; body read as nothing ("function body is empty", adr-2609111900). The
-  ;; :cljs form, so the compiler refuses the host call by name here.
-  #?(:clj (int c) :cljs (.charCodeAt (str c) 0)
-     :default (.charCodeAt (str c) 0)))
+#?(:clj
+   (defn- code-point [c]
+     ;; :default -- the Kotoba reader's only feature is :kotoba, so a #?-only
+     ;; body read as nothing ("function body is empty", adr-2609111900). The
+     ;; :cljs form, so the compiler refuses the host call by name here.
+     #?(:clj (int c) :cljs (.charCodeAt (str c) 0)
+        :default (.charCodeAt (str c) 0)))
+   :cljs
+   (defn- code-point [c]
+     ;; :default -- the Kotoba reader's only feature is :kotoba, so a #?-only
+     ;; body read as nothing ("function body is empty", adr-2609111900). The
+     ;; :cljs form, so the compiler refuses the host call by name here.
+     #?(:clj (int c) :cljs (.charCodeAt (str c) 0)
+        :default (.charCodeAt (str c) 0))))
 
-(defn- reject! [message data]
-  (throw (ex-info message data)))
+#?(:clj
+   (defn- reject! [message data]
+     (throw (ex-info message data)))
+   :cljs
+   (defn- reject! [message data]
+     (throw (ex-info message data))))
 
 ;; 256^0 .. 256^7 -- powers of two below 2^56, exact as both a JVM long and a
 ;; JS double. Mirrors `kotoba.object.elf64`; see there for why 256^8 is absent.
-(def ^:private byte-scale
-  [1 256 65536 16777216 4294967296 1099511627776 281474976710656 72057594037927936])
+#?(:clj
+   (def ^:private byte-scale
+     [1 256 65536 16777216 4294967296 1099511627776 281474976710656 72057594037927936])
+   :cljs
+   (def ^:private byte-scale
+     [1 256 65536 16777216 4294967296 1099511627776 281474976710656 72057594037927936]))
 
 ;; Exclusive upper bound per width. This encoder is unsigned-only, so there is
 ;; no lower bound to carry. Spelled as literals because at width 8 the bound is
 ;; 2^64, which is past Long on the JVM -- the reason the previous
 ;; `(reduce *' 1 (repeat width 256))` had to promote, and the reason this file
 ;; could not be loaded by ClojureScript at all.
-(def ^:private width-limit
-  {1 256 2 65536 4 4294967296 8 18446744073709551616})
+#?(:clj
+   (def ^:private width-limit
+     {1 256 2 65536 4 4294967296 8 18446744073709551616})
+   :cljs
+   (def ^:private width-limit
+     {1 256 2 65536 4 4294967296 8 18446744073709551616}))
 
-(defn little-endian
-  "Encode an unsigned integer in exactly `width` bytes without truncation."
-  [n width]
-  (when-not (contains? #{1 2 4 8} width)
-    (reject! "Mach-O integer width must be 1, 2, 4, or 8 bytes"
-             {:width width}))
-  (let [limit (width-limit width)]
-    (when-not (and (integer? n) (<= 0 n) (< n limit))
-      (reject! "Mach-O integer does not fit requested width"
-               {:value n :width width}))
-    ;; `n` is non-negative here, so `quot` and floored division agree and the
-    ;; largest value handled is `n` itself -- 2^64 is only ever a comparison.
-    (mapv #(mod (quot n (byte-scale %)) 256) (range width))))
+;; ── the Kotoba reading ───────────────────────────────────────────────────────
+;;
+;; Dual-runtime (the posix-path idiom, amu src/kotoba/compiler/posix_path.cljk):
+;; `#?(:kotoba A :default B)` gives Kotoba its own reading. The host code below is
+;; unchanged. On Kotoba the encoder's option map is a `:document` with the same
+;; keys and defaults, bytes are `:vector-i64`, and the host's `throw` is an
+;; aborting export (a `[:result T E]` on the Kotoba route). Every check the host
+;; makes is made in the same order with the same message; the `ex-data` carries
+;; the same keys, though for a few section-layout checks the value is the one
+;; known at that point of the Kotoba pass.
 
-(defn align-up [n exponent]
-  (when-not (and (integer? n) (<= 0 n)
-                 (integer? exponent) (<= 0 exponent 15))
-    (reject! "invalid Mach-O alignment" {:value n :exponent exponent}))
-  (let [alignment (bit-shift-left 1 exponent)]
-    (* alignment (quot (+ n (dec alignment)) alignment))))
+#?(:kotoba
+   (defn- append-all [a :vector-i64 b :vector-i64] :vector-i64
+     (let [n (vector-count b)]
+       (loop [i 0 out a]
+         (if (>= i n) out (recur (+ i 1) (vector-conj out (vector-at b i))))))))
 
-(defn- pad-to [bytes size]
-  (let [bytes (vec bytes)]
-    (when-not (and (integer? size) (<= 0 size max-object-bytes))
-      (reject! "invalid Mach-O region allocation" {:size size}))
-    (when (> (count bytes) size)
-      (reject! "Mach-O region exceeds its allocation"
-               {:size size :actual (count bytes)}))
-    (into bytes (repeat (- size (count bytes)) 0))))
+#?(:kotoba
+   (defn- zeros-onto [v :vector-i64 n :i64] :vector-i64
+     (loop [i 0 out v]
+       (if (>= i n) out (recur (+ i 1) (vector-conj out 0))))))
 
-(defn- byte-vector [field bytes]
-  (let [bytes (vec bytes)]
-    (when-not (and (<= (count bytes) max-object-bytes)
-                   (every? #(and (integer? %) (<= 0 % 255)) bytes))
-      (reject! "invalid Mach-O byte region" {:field field}))
-    bytes))
+;; --- reading documents (none of these abort) ---
 
-(defn- fixed-name [field value]
-  (when-not (and (string? value) (<= 1 (count value) 16)
-                 (every? #(<= 0x20 (code-point %) 0x7e) value))
-    (reject! "Mach-O name must be 1-16 printable ASCII bytes"
-             {:field field :value value}))
-  (pad-to (mapv code-point value) 16))
+#?(:kotoba
+   ;; element count of a vector document; 0 for anything that is not a container
+   (defn- dcount [d :document] :i64
+     (if (document-equal? d (document-null)) 0 (document-count d))))
 
-(defn- version-field [field version]
-  (when-not (and (vector? version) (= 3 (count version))
-                 (every? integer? version)
-                 (<= 0 (nth version 0) 0xffff)
-                 (<= 0 (nth version 1) 0xff)
-                 (<= 0 (nth version 2) 0xff))
-    (reject! "Mach-O version must be [major minor patch]"
-             {:field field :version version}))
-  (+ (bit-shift-left (nth version 0) 16)
-     (bit-shift-left (nth version 1) 8)
-     (nth version 2)))
+#?(:kotoba
+   (defn- dget [m :document k :document] :document
+     (option-or (document-get m k) (document-null))))
 
-(defn- layout-sections [data-offset sections]
-  (reduce (fn [{:keys [address file-offset laid-out]} [index section]]
-            (let [{:keys [segment name align flags bytes relocations]} section
-                  bytes (byte-vector :section-bytes bytes)
-                  aligned-address (align-up address align)
-                  aligned-offset (align-up file-offset align)
-                  record {:index (inc index) :segment segment :name name
-                          :address aligned-address :size (count bytes)
-                          :offset aligned-offset :align align :flags flags
-                          :bytes bytes :relocations (vec relocations)}]
-              (fixed-name :segment segment)
-              (fixed-name :section name)
-              (when-not (and (integer? flags) (<= 0 flags 0xffffffff))
-                (reject! "invalid Mach-O section flags"
-                         {:section name :flags flags}))
-              {:address (+ aligned-address (count bytes))
-               :file-offset (+ aligned-offset (count bytes))
-               :laid-out (conj laid-out record)}))
-          {:address 0 :file-offset data-offset :laid-out []}
-          (map-indexed vector sections)))
+#?(:kotoba
+   (defn- dhas? [m :document k :document] :bool
+     (option-some? (document-get m k))))
 
-(defn- layout-relocations [file-offset sections]
-  (reduce (fn [{:keys [file-offset laid-out]} section]
-            (let [relocations (:relocations section)
-                  count (count relocations)]
-              (when (> count max-relocation-count)
-                (reject! "too many Mach-O relocations"
-                         {:section (:name section) :count count}))
-              (let [offset (if (pos? count) (align-up file-offset 2) 0)]
-                {:file-offset (if (pos? count) (+ offset (* 8 count)) file-offset)
-                 :laid-out (conj laid-out
-                                 (assoc section :reloc-offset offset
-                                                :reloc-count count))})))
-          {:file-offset file-offset :laid-out []}
-          sections))
+#?(:kotoba
+   (defn- dint? [d :document] :bool (option-some? (document-i64-value d))))
 
-(defn- encode-section
-  [{:keys [segment name address size offset align flags reloc-offset reloc-count]}]
-  (vec (concat (fixed-name :section name) (fixed-name :segment segment)
-               (little-endian address 8) (little-endian size 8)
-               (little-endian offset 4) (little-endian align 4)
-               (little-endian reloc-offset 4) (little-endian reloc-count 4)
-               (little-endian flags 4)
-               (repeat 12 0))))
+#?(:kotoba
+   (defn- dint [d :document] :i64 (option-or (document-i64-value d) 0)))
 
-(defn- string-table [symbols]
-  (reduce (fn [{:keys [bytes offsets]} {:keys [name]}]
-            (when-not (and (string? name) (str/starts-with? name "_")
-                           (<= 2 (count name) 255)
-                           (every? #(<= 0x20 (code-point %) 0x7e) name))
-              (reject! "Mach-O symbol must be underscore-prefixed printable ASCII"
-                       {:name name}))
-            {:bytes (into bytes (concat (map code-point name) [0]))
-             :offsets (assoc offsets name (count bytes))})
-          {:bytes [0] :offsets {}}
-          symbols))
+#?(:kotoba
+   (defn- dstr? [d :document] :bool (option-some? (document-string-value d))))
 
-(defn- encode-symbol [sections string-offsets {:keys [name section value external? description]
-                                               :or {external? false description 0}}]
-  (when-not (and (integer? section) (<= 0 section (count sections)))
-    (reject! "Mach-O symbol references an invalid section"
-             {:name name :section section}))
-  (let [{section-address :address section-size :size}
-        (when (pos? section) (nth sections (dec section)))]
-    (when-not (if (zero? section)
-                (and external? (integer? value) (zero? value))
-                (and (integer? value) (<= 0 value section-size)))
-      (reject! "invalid Mach-O symbol value" {:name name :value value}))
-    (when-not (and (integer? description) (<= 0 description 0xffff))
-      (reject! "invalid Mach-O symbol description"
-               {:name name :description description}))
-    (vec (concat (little-endian (get string-offsets name) 4)
-                 [(if (zero? section) 0x01
-                      (bit-or 0x0e (if external? 0x01 0)))
-                  section]
-                 (little-endian description 2)
-                 (little-endian (if (zero? section) 0
-                                    (+ section-address value)) 8)))))
+#?(:kotoba
+   (defn- dstr [d :document] :string (option-or (document-string-value d) "")))
 
-(defn- width-exponent [width]
-  (case width 1 0, 2 1, 4 2, 8 3))
+#?(:kotoba
+   (defn- delem [d :document i :i64] :document
+     (option-or (document-vector-at d i) (document-null))))
 
-(defn- encode-relocation [machine symbol-indexes section
-                          {:keys [offset type symbol] :as relocation}]
-  (when-not (= #{:offset :type :symbol} (set (keys relocation)))
-    (reject! "non-canonical Mach-O relocation" {:relocation relocation}))
-  (let [{:keys [code width pcrel?]} (get-in relocation-types [machine type])
-        symbol-index (get symbol-indexes symbol)]
-    (when-not code
-      (reject! "unsupported Mach-O relocation type"
-               {:machine machine :type type}))
-    (when-not (some? symbol-index)
-      (reject! "Mach-O relocation references an unknown symbol"
-               {:symbol symbol}))
-    (when-not (and (integer? offset) (<= 0 offset)
-                   (<= (+ offset width) (:size section)))
-      (reject! "Mach-O relocation exceeds its section"
-               {:section (:name section) :offset offset :width width}))
-    (vec (concat
-          (little-endian offset 4)
-          (little-endian
-           (bit-or symbol-index
-                   (if pcrel? (bit-shift-left 1 24) 0)
-                   (bit-shift-left (width-exponent width) 25)
-                   (bit-shift-left 1 27)
-                   (bit-shift-left code 28))
-           4)))))
+#?(:kotoba
+   ;; every code point of `s` is printable ASCII (0x20-0x7e)
+   (defn- printable? [s :string] :bool
+     (let [n (string-byte-length s)]
+       (loop [i 0]
+         (if (>= i n)
+           true
+           (let [c (string-code-point-at s i)]
+             (if (if (>= c 32) (<= c 126) false) (recur (+ i 1)) false)))))))
 
-(defn encode-object
-  "Encode a compact Mach-O 64-bit MH_OBJECT.
+#?(:kotoba
+   (defn- ascii-bytes [s :string] :vector-i64
+     (let [n (string-byte-length s)]
+       (loop [i 0 out (vector-i64)]
+         (if (>= i n) out (recur (+ i 1) (vector-conj out (string-code-point-at s i))))))))
 
-  Sections are placed in caller order and aligned by their exponent. Symbols
-  use one-based section indices and section-relative values."
-  [{:keys [machine platform minimum-os sdk sections symbols flags]
-    :or {minimum-os [0 0 0] sdk [0 0 0] flags 0}}]
-  (let [{:keys [cpu-type cpu-subtype]} (get machines machine)
-        platform-id (get platforms platform)
-        sections (vec sections)
-        symbols (vec symbols)]
-    (when-not cpu-type
-      (reject! "unsupported Mach-O machine" {:machine machine}))
-    (when-not platform-id
-      (reject! "unsupported Mach-O platform" {:platform platform}))
-    (when-not (<= 1 (count sections) max-section-count)
-      (reject! "invalid Mach-O section count" {:count (count sections)}))
-    (when-not (<= 1 (count symbols) max-symbol-count)
-      (reject! "invalid Mach-O symbol count" {:count (count symbols)}))
-    (when-not (= (count symbols) (count (set (map :name symbols))))
-      (reject! "duplicate Mach-O symbol name" {}))
-    (when-not (and (integer? flags) (<= 0 flags 0xffffffff))
-      (reject! "invalid Mach-O header flags" {:flags flags}))
-    (let [segment-command-size (+ 72 (* 80 (count sections)))
-          build-command-size 24
-          symtab-command-size 24
-          command-size (+ segment-command-size build-command-size symtab-command-size)
-          data-offset (+ 32 command-size)
-          {:keys [address file-offset laid-out]} (layout-sections data-offset sections)
-          {relocation-end :file-offset laid-out :laid-out}
-          (layout-relocations file-offset laid-out)
-          symoff (align-up relocation-end 3)
-          {:keys [bytes offsets]} (string-table symbols)
-          symbol-indexes (zipmap (map :name symbols) (range))
-          string-bytes (pad-to bytes (align-up (count bytes) 3))
-          stroff (+ symoff (* 16 (count symbols)))
-          header (vec (concat (little-endian 0xfeedfacf 4)
-                              (little-endian cpu-type 4)
-                              (little-endian cpu-subtype 4)
-                              (little-endian 1 4)
-                              (little-endian 3 4)
-                              (little-endian command-size 4)
-                              (little-endian flags 4)
-                              (little-endian 0 4)))
-          segment-command
-          (vec (concat (little-endian 0x19 4)
-                       (little-endian segment-command-size 4)
-                       (repeat 16 0)
-                       (little-endian 0 8) (little-endian address 8)
-                       (little-endian data-offset 8)
-                       (little-endian (- file-offset data-offset) 8)
-                       (little-endian 7 4) (little-endian 7 4)
-                       (little-endian (count sections) 4) (little-endian 0 4)
-                       (mapcat encode-section laid-out)))
-          build-command
-          (vec (concat (little-endian 0x32 4) (little-endian 24 4)
-                       (little-endian platform-id 4)
-                       (little-endian (version-field :minimum-os minimum-os) 4)
-                       (little-endian (version-field :sdk sdk) 4)
-                       (little-endian 0 4)))
-          symtab-command
-          (vec (concat (little-endian 0x2 4) (little-endian 24 4)
-                       (little-endian symoff 4)
-                       (little-endian (count symbols) 4)
-                       (little-endian stroff 4)
-                       (little-endian (count string-bytes) 4)))
-          section-data (reduce (fn [out {:keys [offset bytes]}]
-                                 (into (pad-to out offset) bytes))
-                               (vec (concat header segment-command
-                                            build-command symtab-command))
-                               laid-out)
-          relocation-data
-          (reduce (fn [out {:keys [reloc-offset relocations] :as section}]
-                    (if (seq relocations)
-                      (into (pad-to out reloc-offset)
-                            (mapcat #(encode-relocation machine symbol-indexes
-                                                        section %)
-                                    relocations))
-                      out))
-                  section-data
-                  laid-out)
-          symbol-data (mapcat #(encode-symbol laid-out offsets %) symbols)
-          object (vec (concat (pad-to relocation-data symoff)
-                              symbol-data string-bytes))]
-      (when (> (count object) max-object-bytes)
-        (reject! "Mach-O object exceeds byte limit"
-                 {:bytes (count object) :limit max-object-bytes}))
-      object)))
+#?(:kotoba
+   ;; every element of vector document `d` is an integer in [0, 255]
+   (defn- bytes-ok? [d :document] :bool
+     (let [n (dcount d)]
+       (loop [i 0]
+         (if (>= i n)
+           true
+           (let [e (delem d i)]
+             (if (dint? e)
+               (if (if (>= (dint e) 0) (<= (dint e) 255) false) (recur (+ i 1)) false)
+               false)))))))
+
+#?(:kotoba
+   (defn- doc-bytes [d :document] :vector-i64
+     (let [n (dcount d)]
+       (loop [i 0 out (vector-i64)]
+         (if (>= i n) out (recur (+ i 1) (vector-conj out (dint (delem d i)))))))))
+
+#?(:kotoba
+   (defn- machine-cpu [d :document] :i64
+     (cond (document-equal? d (document-keyword :aarch64)) 0x0100000c
+           (document-equal? d (document-keyword :x86-64)) 0x01000007
+           :else -1)))
+
+#?(:kotoba
+   (defn- machine-subtype [d :document] :i64
+     (if (document-equal? d (document-keyword :x86-64)) 3 0)))
+
+#?(:kotoba
+   (defn- platform-code [d :document] :i64
+     (cond (document-equal? d (document-keyword :macos)) 1
+           (document-equal? d (document-keyword :ios)) 2
+           (document-equal? d (document-keyword :tvos)) 3
+           (document-equal? d (document-keyword :watchos)) 4
+           (document-equal? d (document-keyword :maccatalyst)) 6
+           (document-equal? d (document-keyword :ios-simulator)) 7
+           (document-equal? d (document-keyword :tvos-simulator)) 8
+           (document-equal? d (document-keyword :watchos-simulator)) 9
+           (document-equal? d (document-keyword :driverkit)) 10
+           (document-equal? d (document-keyword :visionos)) 11
+           (document-equal? d (document-keyword :visionos-simulator)) 12
+           :else -1)))
+
+#?(:kotoba
+   ;; relocation type -> 1 + code * 16 + width-exponent * 4 + pcrel, or -1 when
+   ;; the (machine, type) pair is not in the table
+   (defn- reloc-info [machine :document t :document] :i64
+     (if (document-equal? machine (document-keyword :aarch64))
+       (cond (document-equal? t (document-keyword :aarch64/unsigned)) (+ 1 (+ (* 0 16) (+ (* 3 4) 0)))
+             (document-equal? t (document-keyword :aarch64/branch26)) (+ 1 (+ (* 2 16) (+ (* 2 4) 1)))
+             (document-equal? t (document-keyword :aarch64/page21)) (+ 1 (+ (* 3 16) (+ (* 2 4) 1)))
+             (document-equal? t (document-keyword :aarch64/pageoff12)) (+ 1 (+ (* 4 16) (+ (* 2 4) 0)))
+             :else -1)
+       (if (document-equal? machine (document-keyword :x86-64))
+         (cond (document-equal? t (document-keyword :x86-64/unsigned)) (+ 1 (+ (* 0 16) (+ (* 3 4) 0)))
+               (document-equal? t (document-keyword :x86-64/signed)) (+ 1 (+ (* 1 16) (+ (* 2 4) 1)))
+               (document-equal? t (document-keyword :x86-64/branch)) (+ 1 (+ (* 2 16) (+ (* 2 4) 1)))
+               (document-equal? t (document-keyword :x86-64/got-load)) (+ 1 (+ (* 3 16) (+ (* 2 4) 1)))
+               (document-equal? t (document-keyword :x86-64/got)) (+ 1 (+ (* 4 16) (+ (* 2 4) 1)))
+               (document-equal? t (document-keyword :x86-64/tlv)) (+ 1 (+ (* 9 16) (+ (* 2 4) 1)))
+               :else -1)
+         -1))))
+
+;; --- the exports that need no document ---
+
+#?(:kotoba
+   (defn little-endian [n :i64 width :i64] :vector-i64
+     (let [ok-width (if (= width 1) true (if (= width 2) true (if (= width 4) true (= width 8))))]
+       (if ok-width
+         (let [fits (cond (< n 0) false
+                          (= width 1) (< n 256)
+                          (= width 2) (< n 65536)
+                          (= width 4) (< n 4294967296)
+                          :else true)]
+           (if fits
+             (loop [i 0 out (vector-i64)]
+               (if (>= i width)
+                 out
+                 (recur (+ i 1) (vector-conj out (bit-and (u64-shift-right n (* 8 i)) 255)))))
+             (throw (ex-info "Mach-O integer does not fit requested width" {:value n :width width}))))
+         (throw (ex-info "Mach-O integer width must be 1, 2, 4, or 8 bytes" {:width width}))))))
+
+#?(:kotoba
+   (defn align-up [n :i64 exponent :i64] :i64
+     (if (if (>= n 0) (if (>= exponent 0) (<= exponent 15) false) false)
+       (let [alignment (i64-shift-left 1 exponent)]
+         (* alignment (quot (+ n (- alignment 1)) alignment)))
+       (throw (ex-info "invalid Mach-O alignment" {:value n :exponent exponent})))))
+
+#?(:kotoba
+   (defn- pad-to [bytes :vector-i64 size :i64] :vector-i64
+     (if (if (>= size 0) (<= size 67108864) false)
+       (if (> (vector-count bytes) size)
+         (throw (ex-info "Mach-O region exceeds its allocation" {:size size :actual (vector-count bytes)}))
+         (zeros-onto bytes (- size (vector-count bytes))))
+       (throw (ex-info "invalid Mach-O region allocation" {:size size})))))
+
+;; --- validation (aborting; recursion rather than `loop`, because a loop body
+;; may not abort on a path that goes on to recur) ---
+
+#?(:kotoba
+   (defn- fixed-name [field :document value :document] :vector-i64
+     (if (dstr? value)
+       (if (if (>= (string-byte-length (dstr value)) 1) (<= (string-byte-length (dstr value)) 16) false)
+         (if (printable? (dstr value))
+           (pad-to (ascii-bytes (dstr value)) 16)
+           (throw (ex-info "Mach-O name must be 1-16 printable ASCII bytes" {:field field :value value})))
+         (throw (ex-info "Mach-O name must be 1-16 printable ASCII bytes" {:field field :value value})))
+       (throw (ex-info "Mach-O name must be 1-16 printable ASCII bytes" {:field field :value value})))))
+
+#?(:kotoba
+   (defn- version-field [field :document version :document] :i64
+     (if (if (= 3 (dcount version))
+           (if (dint? (delem version 0))
+             (if (dint? (delem version 1))
+               (if (dint? (delem version 2))
+                 (if (if (>= (dint (delem version 0)) 0) (<= (dint (delem version 0)) 65535) false)
+                   (if (if (>= (dint (delem version 1)) 0) (<= (dint (delem version 1)) 255) false)
+                     (if (>= (dint (delem version 2)) 0) (<= (dint (delem version 2)) 255) false)
+                     false)
+                   false)
+                 false)
+               false)
+             false)
+           false)
+       (+ (i64-shift-left (dint (delem version 0)) 16)
+          (+ (i64-shift-left (dint (delem version 1)) 8) (dint (delem version 2))))
+       (throw (ex-info "Mach-O version must be [major minor patch]" {:field field :version version})))))
+
+#?(:kotoba
+   ;; one section's own checks, in the host's order
+   (defn- check-section [s :document] :i64
+     (let [bytes-d (dget s (document-keyword :bytes))
+           align-d (dget s (document-keyword :align))
+           flags-d (dget s (document-keyword :flags))]
+       (if (bytes-ok? bytes-d)
+         (if (if (dint? align-d) (if (>= (dint align-d) 0) (<= (dint align-d) 15) false) false)
+           (let [seg (fixed-name (document-keyword :segment) (dget s (document-keyword :segment)))
+                 nm (fixed-name (document-keyword :section) (dget s (document-keyword :name)))]
+             (if (if (dint? flags-d) (if (>= (dint flags-d) 0) (<= (dint flags-d) 4294967295) false) false)
+               0
+               (throw (ex-info "invalid Mach-O section flags" {:section (dget s (document-keyword :name)) :flags flags-d}))))
+           (throw (ex-info "invalid Mach-O alignment" {:value 0 :exponent align-d})))
+         (throw (ex-info "invalid Mach-O byte region" {:field (document-keyword :section-bytes)}))))))
+
+#?(:kotoba
+   (defn- check-sections [secs :document i :i64 n :i64] :i64
+     (if (>= i n)
+       0
+       (let [ok (check-section (delem secs i))]
+         (check-sections secs (+ i 1) n)))))
+
+#?(:kotoba
+   (defn- check-symbol-name [s :document] :i64
+     (let [nm (dget s (document-keyword :name))]
+       (if (dstr? nm)
+         (let [t (dstr nm)
+               len (string-byte-length t)]
+           (if (if (>= len 2) (if (<= len 255) (if (= 95 (string-code-point-at t 0)) (printable? t) false) false) false)
+             0
+             (throw (ex-info "Mach-O symbol must be underscore-prefixed printable ASCII" {:name nm}))))
+         (throw (ex-info "Mach-O symbol must be underscore-prefixed printable ASCII" {:name nm}))))))
+
+#?(:kotoba
+   (defn- check-symbol-names [syms :document i :i64 n :i64] :i64
+     (if (>= i n)
+       0
+       (let [ok (check-symbol-name (delem syms i))]
+         (check-symbol-names syms (+ i 1) n)))))
+
+;; --- layout (none abort: everything was validated above) ---
+
+#?(:kotoba
+   (defn- align-up* [n :i64 exponent :i64] :i64
+     (let [alignment (i64-shift-left 1 exponent)]
+       (* alignment (quot (+ n (- alignment 1)) alignment)))))
+
+#?(:kotoba
+   ;; `little-endian` without the checks, for values already validated
+   (defn- le* [n :i64 width :i64] :vector-i64
+     (loop [i 0 out (vector-i64)]
+       (if (>= i width)
+         out
+         (recur (+ i 1) (vector-conj out (bit-and (u64-shift-right n (* 8 i)) 255)))))))
+
+#?(:kotoba
+   ;; lanes per section: address, size, offset, align, flags, reloc-offset, reloc-count
+   (defn- layout [secs :document data-offset :i64] :vector-i64
+     (let [n (dcount secs)]
+       (loop [i 0 address 0 foff data-offset out (vector-i64)]
+         (if (>= i n)
+           (vector-conj (vector-conj out address) foff)
+           (let [s (delem secs i)
+                 size (dcount (dget s (document-keyword :bytes)))
+                 al (dint (dget s (document-keyword :align)))
+                 a (align-up* address al)
+                 o (align-up* foff al)
+                 flags (dint (dget s (document-keyword :flags)))]
+             (recur (+ i 1) (+ a size) (+ o size)
+                    (vector-conj (vector-conj (vector-conj (vector-conj (vector-conj (vector-conj (vector-conj out a) size) o) al) flags) 0) 0))))))))
+
+#?(:kotoba
+   (defn- sec-lane [lay :vector-i64 i :i64 lane :i64] :i64
+     (vector-at lay (+ (* i 7) lane))))
+
+#?(:kotoba
+   (defn- set-lane [lay :vector-i64 i :i64 lane :i64 v :i64] :vector-i64
+     (vector-assoc lay (+ (* i 7) lane) v)))
+
+#?(:kotoba
+   ;; place each section's relocation table; returns the layout with lanes 5 and 6
+   ;; set, and the end offset appended after the last section's lanes
+   (defn- place-relocations [secs :document lay0 :vector-i64 file-offset :i64] :vector-i64
+     (let [n (dcount secs)]
+       (loop [i 0 foff file-offset lay lay0]
+         (if (>= i n)
+           (vector-conj lay foff)
+           (let [cnt (dcount (dget (delem secs i) (document-keyword :relocations)))
+                 off (if (> cnt 0) (align-up* foff 2) 0)]
+             (recur (+ i 1)
+                    (if (> cnt 0) (+ off (* 8 cnt)) foff)
+                    (set-lane (set-lane lay i 5 off) i 6 cnt))))))))
+
+#?(:kotoba
+   (defn- check-reloc-counts [secs :document i :i64 n :i64] :i64
+     (if (>= i n)
+       0
+       (let [cnt (dcount (dget (delem secs i) (document-keyword :relocations)))]
+         (if (> cnt 65535)
+           (throw (ex-info "too many Mach-O relocations" {:section (dget (delem secs i) (document-keyword :name)) :count cnt}))
+           (check-reloc-counts secs (+ i 1) n))))))
+
+#?(:kotoba
+   (defn- section-header [s :document lay :vector-i64 i :i64] :vector-i64
+     (let [nm (ascii-bytes (dstr (dget s (document-keyword :name))))
+           seg (ascii-bytes (dstr (dget s (document-keyword :segment))))]
+       (append-all
+        (append-all
+         (append-all
+          (append-all
+           (append-all
+            (append-all
+             (append-all
+              (append-all
+               (append-all (zeros-onto nm (- 16 (vector-count nm))) (zeros-onto seg (- 16 (vector-count seg))))
+               (le* (sec-lane lay i 0) 8))
+              (le* (sec-lane lay i 1) 8))
+             (le* (sec-lane lay i 2) 4))
+            (le* (sec-lane lay i 3) 4))
+           (le* (sec-lane lay i 5) 4))
+          (le* (sec-lane lay i 6) 4))
+         (le* (sec-lane lay i 4) 4))
+        (zeros-onto (vector-i64) 12)))))
+
+#?(:kotoba
+   (defn- section-headers [secs :document lay :vector-i64 i :i64 out :vector-i64] :vector-i64
+     (if (>= i (dcount secs))
+       out
+       (section-headers secs lay (+ i 1) (append-all out (section-header (delem secs i) lay i))))))
+
+;; --- symbols and relocations ---
+
+#?(:kotoba
+   ;; index of the symbol named by document `name` in `syms`, or -1
+   (defn- sym-index [syms :document name :document] :i64
+     (let [n (dcount syms)]
+       (loop [i 0]
+         (if (>= i n)
+           -1
+           (if (document-equal? (dget (delem syms i) (document-keyword :name)) name) i (recur (+ i 1))))))))
+
+#?(:kotoba
+   (defn- has-duplicate-names? [syms :document] :bool
+     (let [n (dcount syms)]
+       (loop [i 0]
+         (if (>= i n)
+           false
+           (if (= i (sym-index syms (dget (delem syms i) (document-keyword :name)))) (recur (+ i 1)) true))))))
+
+#?(:kotoba
+   (defn- check-relocation [machine :document syms :document size :i64 secname :document r :document] :i64
+     (if (if (= 3 (dcount r))
+           (if (dhas? r (document-keyword :offset))
+             (if (dhas? r (document-keyword :type)) (dhas? r (document-keyword :symbol)) false)
+             false)
+           false)
+       (let [info (reloc-info machine (dget r (document-keyword :type)))
+             idx (sym-index syms (dget r (document-keyword :symbol)))
+             off-d (dget r (document-keyword :offset))
+             width (i64-shift-left 1 (bit-and (i64-shift-right (- info 1) 2) 3))]
+         (if (< info 0)
+           (throw (ex-info "unsupported Mach-O relocation type" {:machine machine :type (dget r (document-keyword :type))}))
+           (if (< idx 0)
+             (throw (ex-info "Mach-O relocation references an unknown symbol" {:symbol (dget r (document-keyword :symbol))}))
+             (if (if (dint? off-d) (if (>= (dint off-d) 0) (<= (+ (dint off-d) width) size) false) false)
+               0
+               (throw (ex-info "Mach-O relocation exceeds its section" {:section secname :offset off-d :width width}))))))
+       (throw (ex-info "non-canonical Mach-O relocation" {:relocation r})))))
+
+#?(:kotoba
+   (defn- check-relocation-list [machine :document syms :document size :i64 secname :document rels :document j :i64] :i64
+     (if (>= j (dcount rels))
+       0
+       (let [ok (check-relocation machine syms size secname (delem rels j))]
+         (check-relocation-list machine syms size secname rels (+ j 1))))))
+
+#?(:kotoba
+   (defn- check-all-relocations [machine :document syms :document secs :document lay :vector-i64 i :i64] :i64
+     (if (>= i (dcount secs))
+       0
+       (let [s (delem secs i)
+             ok (check-relocation-list machine syms (sec-lane lay i 1) (dget s (document-keyword :name))
+                                       (dget s (document-keyword :relocations)) 0)]
+         (check-all-relocations machine syms secs lay (+ i 1))))))
+
+#?(:kotoba
+   (defn- truthy? [d :document] :bool
+     (let [o (document-bool-value d)]
+       (if (option-some? o) (option-value o false) (not (document-equal? d (document-null)))))))
+
+#?(:kotoba
+   (defn- check-symbol [nsec :i64 lay :vector-i64 sym :document] :i64
+     (let [sec-d (dget sym (document-keyword :section))
+           val-d (dget sym (document-keyword :value))
+           ext (truthy? (dget sym (document-keyword :external?)))
+           desc-d (if (dhas? sym (document-keyword :description)) (dget sym (document-keyword :description)) (document-i64 0))
+           name-d (dget sym (document-keyword :name))]
+       (if (if (dint? sec-d) (if (>= (dint sec-d) 0) (<= (dint sec-d) nsec) false) false)
+         (let [sec (dint sec-d)
+               value-ok (if (= sec 0)
+                          (if ext (if (dint? val-d) (= (dint val-d) 0) false) false)
+                          (if (dint? val-d)
+                            (if (>= (dint val-d) 0) (<= (dint val-d) (sec-lane lay (- sec 1) 1)) false)
+                            false))]
+           (if value-ok
+             (if (if (dint? desc-d) (if (>= (dint desc-d) 0) (<= (dint desc-d) 65535) false) false)
+               0
+               (throw (ex-info "invalid Mach-O symbol description" {:name name-d :description desc-d})))
+             (throw (ex-info "invalid Mach-O symbol value" {:name name-d :value val-d}))))
+         (throw (ex-info "Mach-O symbol references an invalid section" {:name name-d :section sec-d}))))))
+
+#?(:kotoba
+   (defn- check-symbols [nsec :i64 lay :vector-i64 syms :document i :i64] :i64
+     (if (>= i (dcount syms))
+       0
+       (let [ok (check-symbol nsec lay (delem syms i))]
+         (check-symbols nsec lay syms (+ i 1))))))
+
+;; --- encoding (none abort) ---
+
+#?(:kotoba
+   (defn- string-table [syms :document i :i64 out :vector-i64] :vector-i64
+     (if (>= i (dcount syms))
+       out
+       (string-table syms (+ i 1)
+                     (vector-conj (append-all out (ascii-bytes (dstr (dget (delem syms i) (document-keyword :name))))) 0)))))
+
+#?(:kotoba
+   ;; offset in the string table of symbol i's name
+   (defn- name-offset [syms :document i :i64] :i64
+     (loop [j 0 off 1]
+       (if (>= j i)
+         off
+         (recur (+ j 1) (+ off (+ 1 (string-byte-length (dstr (dget (delem syms j) (document-keyword :name)))))))))))
+
+#?(:kotoba
+   (defn- encode-symbol-bytes [nsec :i64 lay :vector-i64 syms :document i :i64] :vector-i64
+     (let [sym (delem syms i)
+           sec (dint (dget sym (document-keyword :section)))
+           ext (truthy? (dget sym (document-keyword :external?)))
+           desc (if (dhas? sym (document-keyword :description)) (dint (dget sym (document-keyword :description))) 0)
+           value (dint (dget sym (document-keyword :value)))
+           kind (if (= sec 0) 1 (bit-or 14 (if ext 1 0)))
+           addr (if (= sec 0) 0 (+ (sec-lane lay (- sec 1) 0) value))]
+       (append-all
+        (append-all
+         (append-all (le* (name-offset syms i) 4) (vector-i64 kind sec))
+         (le* desc 2))
+        (le* addr 8)))))
+
+#?(:kotoba
+   (defn- all-symbols [nsec :i64 lay :vector-i64 syms :document i :i64 out :vector-i64] :vector-i64
+     (if (>= i (dcount syms))
+       out
+       (all-symbols nsec lay syms (+ i 1) (append-all out (encode-symbol-bytes nsec lay syms i))))))
+
+#?(:kotoba
+   (defn- encode-relocation-bytes [machine :document syms :document r :document] :vector-i64
+     (let [info (- (reloc-info machine (dget r (document-keyword :type))) 1)
+           code (i64-shift-right info 4)
+           wexp (bit-and (i64-shift-right info 2) 3)
+           pcrel (bit-and info 1)
+           idx (sym-index syms (dget r (document-keyword :symbol)))
+           off (dint (dget r (document-keyword :offset)))]
+       (append-all
+        (le* off 4)
+        (le* (bit-or idx
+                     (bit-or (i64-shift-left pcrel 24)
+                             (bit-or (i64-shift-left wexp 25)
+                                     (bit-or (i64-shift-left 1 27) (i64-shift-left code 28)))))
+             4)))))
+
+#?(:kotoba
+   (defn- relocation-list-bytes [machine :document syms :document rels :document j :i64 out :vector-i64] :vector-i64
+     (if (>= j (dcount rels))
+       out
+       (relocation-list-bytes machine syms rels (+ j 1)
+                              (append-all out (encode-relocation-bytes machine syms (delem rels j)))))))
+
+#?(:kotoba
+   (defn- pad* [v :vector-i64 size :i64] :vector-i64
+     (if (>= (vector-count v) size) v (zeros-onto v (- size (vector-count v))))))
+
+#?(:kotoba
+   (defn- section-data [secs :document lay :vector-i64 i :i64 out :vector-i64] :vector-i64
+     (if (>= i (dcount secs))
+       out
+       (section-data secs lay (+ i 1)
+                     (append-all (pad* out (sec-lane lay i 2))
+                                 (doc-bytes (dget (delem secs i) (document-keyword :bytes))))))))
+
+#?(:kotoba
+   (defn- relocation-data [machine :document syms :document secs :document lay :vector-i64 i :i64 out :vector-i64] :vector-i64
+     (if (>= i (dcount secs))
+       out
+       (let [rels (dget (delem secs i) (document-keyword :relocations))]
+         (relocation-data machine syms secs lay (+ i 1)
+                          (if (> (dcount rels) 0)
+                            (relocation-list-bytes machine syms rels 0 (pad* out (sec-lane lay i 5)))
+                            out))))))
+
+#?(:kotoba
+   (defn- default-version [] :document
+     (document-vector (document-i64 0) (document-i64 0) (document-i64 0))))
+
+#?(:kotoba
+   (defn- flags-of [m :document] :i64
+     (if (dhas? m (document-keyword :flags)) (dint (dget m (document-keyword :flags))) 0)))
+
+#?(:kotoba
+   (defn- encode-checked [m :document machine :document platform-id :i64 cpu :i64 subtype :i64
+                          secs :document syms :document nsec :i64 nsym :i64 flags :i64] :vector-i64
+     (let [seg-size (+ 72 (* 80 nsec))
+           command-size (+ seg-size 48)
+           data-offset (+ 32 command-size)
+           ok1 (check-sections secs 0 nsec)
+           lay0 (layout secs data-offset)
+           ok2 (check-reloc-counts secs 0 nsec)
+           ok3 (check-symbol-names syms 0 nsym)
+           min-d (if (dhas? m (document-keyword :minimum-os)) (dget m (document-keyword :minimum-os)) (default-version))
+           sdk-d (if (dhas? m (document-keyword :sdk)) (dget m (document-keyword :sdk)) (default-version))
+           min-os (version-field (document-keyword :minimum-os) min-d)
+           sdk-os (version-field (document-keyword :sdk) sdk-d)
+           lay (place-relocations secs lay0 (vector-at lay0 (+ 1 (* 7 nsec))))
+           ok4 (check-all-relocations machine syms secs lay 0)
+           ok5 (check-symbols nsec lay syms 0)
+           address (vector-at lay (* 7 nsec))
+           file-offset (vector-at lay (+ 1 (* 7 nsec)))
+           reloc-end (vector-at lay (+ 2 (* 7 nsec)))
+           symoff (align-up* reloc-end 3)
+           strings (string-table syms 0 (vector-i64 0))
+           string-bytes (pad* strings (align-up* (vector-count strings) 3))
+           stroff (+ symoff (* 16 nsym))
+           header (append-all
+                   (append-all
+                    (append-all
+                     (append-all
+                      (append-all
+                       (append-all
+                        (append-all (le* 4277009103 4) (le* cpu 4))
+                        (le* subtype 4))
+                       (le* 1 4))
+                      (le* 3 4))
+                     (le* command-size 4))
+                    (le* flags 4))
+                   (le* 0 4))
+           segment-command (append-all
+                            (append-all
+                             (append-all
+                              (append-all
+                               (append-all
+                                (append-all
+                                 (append-all
+                                  (append-all
+                                   (append-all
+                                    (append-all (le* 25 4) (le* seg-size 4))
+                                    (zeros-onto (vector-i64) 16))
+                                   (le* 0 8))
+                                  (le* address 8))
+                                 (le* data-offset 8))
+                                (le* (- file-offset data-offset) 8))
+                               (le* 7 4))
+                              (le* 7 4))
+                             (append-all (le* nsec 4) (le* 0 4)))
+                            (section-headers secs lay 0 (vector-i64)))
+           build-command (append-all
+                          (append-all
+                           (append-all
+                            (append-all
+                             (append-all (le* 50 4) (le* 24 4))
+                             (le* platform-id 4))
+                            (le* min-os 4))
+                           (le* sdk-os 4))
+                          (le* 0 4))
+           symtab-command (append-all
+                           (append-all
+                            (append-all
+                             (append-all
+                              (append-all (le* 2 4) (le* 24 4))
+                              (le* symoff 4))
+                             (le* nsym 4))
+                            (le* stroff 4))
+                           (le* (vector-count string-bytes) 4))
+           head (append-all (append-all (append-all header segment-command) build-command) symtab-command)
+           sec-data (section-data secs lay 0 head)
+           reloc-data (relocation-data machine syms secs lay 0 sec-data)
+           symbol-data (all-symbols nsec lay syms 0 (vector-i64))
+           obj (append-all (append-all (pad* reloc-data symoff) symbol-data) string-bytes)]
+       (if (> (vector-count obj) 67108864)
+         (throw (ex-info "Mach-O object exceeds byte limit" {:bytes (vector-count obj) :limit 67108864}))
+         obj))))
+
+#?(:kotoba
+   (defn encode-object [m :document] :vector-i64
+     (let [machine (dget m (document-keyword :machine))
+           platform (dget m (document-keyword :platform))
+           cpu (machine-cpu machine)
+           subtype (machine-subtype machine)
+           platform-id (platform-code platform)
+           secs (dget m (document-keyword :sections))
+           syms (dget m (document-keyword :symbols))
+           nsec (dcount secs)
+           nsym (dcount syms)
+           flags-d (if (dhas? m (document-keyword :flags)) (dget m (document-keyword :flags)) (document-i64 0))]
+       (if (< cpu 0)
+         (throw (ex-info "unsupported Mach-O machine" {:machine machine}))
+         (if (< platform-id 0)
+           (throw (ex-info "unsupported Mach-O platform" {:platform platform}))
+           (if (if (>= nsec 1) (<= nsec 32) false)
+             (if (if (>= nsym 1) (<= nsym 4096) false)
+               (if (has-duplicate-names? syms)
+                 (throw (ex-info "duplicate Mach-O symbol name" {}))
+                 (if (if (dint? flags-d) (if (>= (dint flags-d) 0) (<= (dint flags-d) 4294967295) false) false)
+                   (encode-checked m machine platform-id cpu subtype secs syms nsec nsym (dint flags-d))
+                   (throw (ex-info "invalid Mach-O header flags" {:flags flags-d}))))
+               (throw (ex-info "invalid Mach-O symbol count" {:count nsym})))
+             (throw (ex-info "invalid Mach-O section count" {:count nsec}))))))))
+
+#?(:clj
+   (defn little-endian
+     "Encode an unsigned integer in exactly `width` bytes without truncation."
+     [n width]
+     (when-not (contains? #{1 2 4 8} width)
+       (reject! "Mach-O integer width must be 1, 2, 4, or 8 bytes"
+                {:width width}))
+     (let [limit (width-limit width)]
+       (when-not (and (integer? n) (<= 0 n) (< n limit))
+         (reject! "Mach-O integer does not fit requested width"
+                  {:value n :width width}))
+       ;; `n` is non-negative here, so `quot` and floored division agree and the
+       ;; largest value handled is `n` itself -- 2^64 is only ever a comparison.
+       (mapv #(mod (quot n (byte-scale %)) 256) (range width))))
+   :cljs
+   (defn little-endian
+     "Encode an unsigned integer in exactly `width` bytes without truncation."
+     [n width]
+     (when-not (contains? #{1 2 4 8} width)
+       (reject! "Mach-O integer width must be 1, 2, 4, or 8 bytes"
+                {:width width}))
+     (let [limit (width-limit width)]
+       (when-not (and (integer? n) (<= 0 n) (< n limit))
+         (reject! "Mach-O integer does not fit requested width"
+                  {:value n :width width}))
+       ;; `n` is non-negative here, so `quot` and floored division agree and the
+       ;; largest value handled is `n` itself -- 2^64 is only ever a comparison.
+       (mapv #(mod (quot n (byte-scale %)) 256) (range width)))))
+
+#?(:clj
+   (defn align-up [n exponent]
+     (when-not (and (integer? n) (<= 0 n)
+                    (integer? exponent) (<= 0 exponent 15))
+       (reject! "invalid Mach-O alignment" {:value n :exponent exponent}))
+     (let [alignment (bit-shift-left 1 exponent)]
+       (* alignment (quot (+ n (dec alignment)) alignment))))
+   :cljs
+   (defn align-up [n exponent]
+     (when-not (and (integer? n) (<= 0 n)
+                    (integer? exponent) (<= 0 exponent 15))
+       (reject! "invalid Mach-O alignment" {:value n :exponent exponent}))
+     (let [alignment (bit-shift-left 1 exponent)]
+       (* alignment (quot (+ n (dec alignment)) alignment)))))
+
+#?(:clj
+   (defn- pad-to [bytes size]
+     (let [bytes (vec bytes)]
+       (when-not (and (integer? size) (<= 0 size max-object-bytes))
+         (reject! "invalid Mach-O region allocation" {:size size}))
+       (when (> (count bytes) size)
+         (reject! "Mach-O region exceeds its allocation"
+                  {:size size :actual (count bytes)}))
+       (into bytes (repeat (- size (count bytes)) 0))))
+   :cljs
+   (defn- pad-to [bytes size]
+     (let [bytes (vec bytes)]
+       (when-not (and (integer? size) (<= 0 size max-object-bytes))
+         (reject! "invalid Mach-O region allocation" {:size size}))
+       (when (> (count bytes) size)
+         (reject! "Mach-O region exceeds its allocation"
+                  {:size size :actual (count bytes)}))
+       (into bytes (repeat (- size (count bytes)) 0)))))
+
+#?(:clj
+   (defn- byte-vector [field bytes]
+     (let [bytes (vec bytes)]
+       (when-not (and (<= (count bytes) max-object-bytes)
+                      (every? #(and (integer? %) (<= 0 % 255)) bytes))
+         (reject! "invalid Mach-O byte region" {:field field}))
+       bytes))
+   :cljs
+   (defn- byte-vector [field bytes]
+     (let [bytes (vec bytes)]
+       (when-not (and (<= (count bytes) max-object-bytes)
+                      (every? #(and (integer? %) (<= 0 % 255)) bytes))
+         (reject! "invalid Mach-O byte region" {:field field}))
+       bytes)))
+
+#?(:clj
+   (defn- fixed-name [field value]
+     (when-not (and (string? value) (<= 1 (count value) 16)
+                    (every? #(<= 0x20 (code-point %) 0x7e) value))
+       (reject! "Mach-O name must be 1-16 printable ASCII bytes"
+                {:field field :value value}))
+     (pad-to (mapv code-point value) 16))
+   :cljs
+   (defn- fixed-name [field value]
+     (when-not (and (string? value) (<= 1 (count value) 16)
+                    (every? #(<= 0x20 (code-point %) 0x7e) value))
+       (reject! "Mach-O name must be 1-16 printable ASCII bytes"
+                {:field field :value value}))
+     (pad-to (mapv code-point value) 16)))
+
+#?(:clj
+   (defn- version-field [field version]
+     (when-not (and (vector? version) (= 3 (count version))
+                    (every? integer? version)
+                    (<= 0 (nth version 0) 0xffff)
+                    (<= 0 (nth version 1) 0xff)
+                    (<= 0 (nth version 2) 0xff))
+       (reject! "Mach-O version must be [major minor patch]"
+                {:field field :version version}))
+     (+ (bit-shift-left (nth version 0) 16)
+        (bit-shift-left (nth version 1) 8)
+        (nth version 2)))
+   :cljs
+   (defn- version-field [field version]
+     (when-not (and (vector? version) (= 3 (count version))
+                    (every? integer? version)
+                    (<= 0 (nth version 0) 0xffff)
+                    (<= 0 (nth version 1) 0xff)
+                    (<= 0 (nth version 2) 0xff))
+       (reject! "Mach-O version must be [major minor patch]"
+                {:field field :version version}))
+     (+ (bit-shift-left (nth version 0) 16)
+        (bit-shift-left (nth version 1) 8)
+        (nth version 2))))
+
+#?(:clj
+   (defn- layout-sections [data-offset sections]
+     (reduce (fn [{:keys [address file-offset laid-out]} [index section]]
+               (let [{:keys [segment name align flags bytes relocations]} section
+                     bytes (byte-vector :section-bytes bytes)
+                     aligned-address (align-up address align)
+                     aligned-offset (align-up file-offset align)
+                     record {:index (inc index) :segment segment :name name
+                             :address aligned-address :size (count bytes)
+                             :offset aligned-offset :align align :flags flags
+                             :bytes bytes :relocations (vec relocations)}]
+                 (fixed-name :segment segment)
+                 (fixed-name :section name)
+                 (when-not (and (integer? flags) (<= 0 flags 0xffffffff))
+                   (reject! "invalid Mach-O section flags"
+                            {:section name :flags flags}))
+                 {:address (+ aligned-address (count bytes))
+                  :file-offset (+ aligned-offset (count bytes))
+                  :laid-out (conj laid-out record)}))
+             {:address 0 :file-offset data-offset :laid-out []}
+             (map-indexed vector sections)))
+   :cljs
+   (defn- layout-sections [data-offset sections]
+     (reduce (fn [{:keys [address file-offset laid-out]} [index section]]
+               (let [{:keys [segment name align flags bytes relocations]} section
+                     bytes (byte-vector :section-bytes bytes)
+                     aligned-address (align-up address align)
+                     aligned-offset (align-up file-offset align)
+                     record {:index (inc index) :segment segment :name name
+                             :address aligned-address :size (count bytes)
+                             :offset aligned-offset :align align :flags flags
+                             :bytes bytes :relocations (vec relocations)}]
+                 (fixed-name :segment segment)
+                 (fixed-name :section name)
+                 (when-not (and (integer? flags) (<= 0 flags 0xffffffff))
+                   (reject! "invalid Mach-O section flags"
+                            {:section name :flags flags}))
+                 {:address (+ aligned-address (count bytes))
+                  :file-offset (+ aligned-offset (count bytes))
+                  :laid-out (conj laid-out record)}))
+             {:address 0 :file-offset data-offset :laid-out []}
+             (map-indexed vector sections))))
+
+#?(:clj
+   (defn- layout-relocations [file-offset sections]
+     (reduce (fn [{:keys [file-offset laid-out]} section]
+               (let [relocations (:relocations section)
+                     count (count relocations)]
+                 (when (> count max-relocation-count)
+                   (reject! "too many Mach-O relocations"
+                            {:section (:name section) :count count}))
+                 (let [offset (if (pos? count) (align-up file-offset 2) 0)]
+                   {:file-offset (if (pos? count) (+ offset (* 8 count)) file-offset)
+                    :laid-out (conj laid-out
+                                    (assoc section :reloc-offset offset
+                                                   :reloc-count count))})))
+             {:file-offset file-offset :laid-out []}
+             sections))
+   :cljs
+   (defn- layout-relocations [file-offset sections]
+     (reduce (fn [{:keys [file-offset laid-out]} section]
+               (let [relocations (:relocations section)
+                     count (count relocations)]
+                 (when (> count max-relocation-count)
+                   (reject! "too many Mach-O relocations"
+                            {:section (:name section) :count count}))
+                 (let [offset (if (pos? count) (align-up file-offset 2) 0)]
+                   {:file-offset (if (pos? count) (+ offset (* 8 count)) file-offset)
+                    :laid-out (conj laid-out
+                                    (assoc section :reloc-offset offset
+                                                   :reloc-count count))})))
+             {:file-offset file-offset :laid-out []}
+             sections)))
+
+#?(:clj
+   (defn- encode-section
+     [{:keys [segment name address size offset align flags reloc-offset reloc-count]}]
+     (vec (concat (fixed-name :section name) (fixed-name :segment segment)
+                  (little-endian address 8) (little-endian size 8)
+                  (little-endian offset 4) (little-endian align 4)
+                  (little-endian reloc-offset 4) (little-endian reloc-count 4)
+                  (little-endian flags 4)
+                  (repeat 12 0))))
+   :cljs
+   (defn- encode-section
+     [{:keys [segment name address size offset align flags reloc-offset reloc-count]}]
+     (vec (concat (fixed-name :section name) (fixed-name :segment segment)
+                  (little-endian address 8) (little-endian size 8)
+                  (little-endian offset 4) (little-endian align 4)
+                  (little-endian reloc-offset 4) (little-endian reloc-count 4)
+                  (little-endian flags 4)
+                  (repeat 12 0)))))
+
+#?(:clj
+   (defn- string-table [symbols]
+     (reduce (fn [{:keys [bytes offsets]} {:keys [name]}]
+               (when-not (and (string? name) (str/starts-with? name "_")
+                              (<= 2 (count name) 255)
+                              (every? #(<= 0x20 (code-point %) 0x7e) name))
+                 (reject! "Mach-O symbol must be underscore-prefixed printable ASCII"
+                          {:name name}))
+               {:bytes (into bytes (concat (map code-point name) [0]))
+                :offsets (assoc offsets name (count bytes))})
+             {:bytes [0] :offsets {}}
+             symbols))
+   :cljs
+   (defn- string-table [symbols]
+     (reduce (fn [{:keys [bytes offsets]} {:keys [name]}]
+               (when-not (and (string? name) (str/starts-with? name "_")
+                              (<= 2 (count name) 255)
+                              (every? #(<= 0x20 (code-point %) 0x7e) name))
+                 (reject! "Mach-O symbol must be underscore-prefixed printable ASCII"
+                          {:name name}))
+               {:bytes (into bytes (concat (map code-point name) [0]))
+                :offsets (assoc offsets name (count bytes))})
+             {:bytes [0] :offsets {}}
+             symbols)))
+
+#?(:clj
+   (defn- encode-symbol [sections string-offsets {:keys [name section value external? description]
+                                                  :or {external? false description 0}}]
+     (when-not (and (integer? section) (<= 0 section (count sections)))
+       (reject! "Mach-O symbol references an invalid section"
+                {:name name :section section}))
+     (let [{section-address :address section-size :size}
+           (when (pos? section) (nth sections (dec section)))]
+       (when-not (if (zero? section)
+                   (and external? (integer? value) (zero? value))
+                   (and (integer? value) (<= 0 value section-size)))
+         (reject! "invalid Mach-O symbol value" {:name name :value value}))
+       (when-not (and (integer? description) (<= 0 description 0xffff))
+         (reject! "invalid Mach-O symbol description"
+                  {:name name :description description}))
+       (vec (concat (little-endian (get string-offsets name) 4)
+                    [(if (zero? section) 0x01
+                         (bit-or 0x0e (if external? 0x01 0)))
+                     section]
+                    (little-endian description 2)
+                    (little-endian (if (zero? section) 0
+                                       (+ section-address value)) 8)))))
+   :cljs
+   (defn- encode-symbol [sections string-offsets {:keys [name section value external? description]
+                                                  :or {external? false description 0}}]
+     (when-not (and (integer? section) (<= 0 section (count sections)))
+       (reject! "Mach-O symbol references an invalid section"
+                {:name name :section section}))
+     (let [{section-address :address section-size :size}
+           (when (pos? section) (nth sections (dec section)))]
+       (when-not (if (zero? section)
+                   (and external? (integer? value) (zero? value))
+                   (and (integer? value) (<= 0 value section-size)))
+         (reject! "invalid Mach-O symbol value" {:name name :value value}))
+       (when-not (and (integer? description) (<= 0 description 0xffff))
+         (reject! "invalid Mach-O symbol description"
+                  {:name name :description description}))
+       (vec (concat (little-endian (get string-offsets name) 4)
+                    [(if (zero? section) 0x01
+                         (bit-or 0x0e (if external? 0x01 0)))
+                     section]
+                    (little-endian description 2)
+                    (little-endian (if (zero? section) 0
+                                       (+ section-address value)) 8))))))
+
+#?(:clj
+   (defn- width-exponent [width]
+     (case width 1 0, 2 1, 4 2, 8 3))
+   :cljs
+   (defn- width-exponent [width]
+     (case width 1 0, 2 1, 4 2, 8 3)))
+
+#?(:clj
+   (defn- encode-relocation [machine symbol-indexes section
+                             {:keys [offset type symbol] :as relocation}]
+     (when-not (= #{:offset :type :symbol} (set (keys relocation)))
+       (reject! "non-canonical Mach-O relocation" {:relocation relocation}))
+     (let [{:keys [code width pcrel?]} (get-in relocation-types [machine type])
+           symbol-index (get symbol-indexes symbol)]
+       (when-not code
+         (reject! "unsupported Mach-O relocation type"
+                  {:machine machine :type type}))
+       (when-not (some? symbol-index)
+         (reject! "Mach-O relocation references an unknown symbol"
+                  {:symbol symbol}))
+       (when-not (and (integer? offset) (<= 0 offset)
+                      (<= (+ offset width) (:size section)))
+         (reject! "Mach-O relocation exceeds its section"
+                  {:section (:name section) :offset offset :width width}))
+       (vec (concat
+             (little-endian offset 4)
+             (little-endian
+              (bit-or symbol-index
+                      (if pcrel? (bit-shift-left 1 24) 0)
+                      (bit-shift-left (width-exponent width) 25)
+                      (bit-shift-left 1 27)
+                      (bit-shift-left code 28))
+              4)))))
+   :cljs
+   (defn- encode-relocation [machine symbol-indexes section
+                             {:keys [offset type symbol] :as relocation}]
+     (when-not (= #{:offset :type :symbol} (set (keys relocation)))
+       (reject! "non-canonical Mach-O relocation" {:relocation relocation}))
+     (let [{:keys [code width pcrel?]} (get-in relocation-types [machine type])
+           symbol-index (get symbol-indexes symbol)]
+       (when-not code
+         (reject! "unsupported Mach-O relocation type"
+                  {:machine machine :type type}))
+       (when-not (some? symbol-index)
+         (reject! "Mach-O relocation references an unknown symbol"
+                  {:symbol symbol}))
+       (when-not (and (integer? offset) (<= 0 offset)
+                      (<= (+ offset width) (:size section)))
+         (reject! "Mach-O relocation exceeds its section"
+                  {:section (:name section) :offset offset :width width}))
+       (vec (concat
+             (little-endian offset 4)
+             (little-endian
+              (bit-or symbol-index
+                      (if pcrel? (bit-shift-left 1 24) 0)
+                      (bit-shift-left (width-exponent width) 25)
+                      (bit-shift-left 1 27)
+                      (bit-shift-left code 28))
+              4))))))
+
+#?(:clj
+   (defn encode-object
+     "Encode a compact Mach-O 64-bit MH_OBJECT.
+   
+     Sections are placed in caller order and aligned by their exponent. Symbols
+     use one-based section indices and section-relative values."
+     [{:keys [machine platform minimum-os sdk sections symbols flags]
+       :or {minimum-os [0 0 0] sdk [0 0 0] flags 0}}]
+     (let [{:keys [cpu-type cpu-subtype]} (get machines machine)
+           platform-id (get platforms platform)
+           sections (vec sections)
+           symbols (vec symbols)]
+       (when-not cpu-type
+         (reject! "unsupported Mach-O machine" {:machine machine}))
+       (when-not platform-id
+         (reject! "unsupported Mach-O platform" {:platform platform}))
+       (when-not (<= 1 (count sections) max-section-count)
+         (reject! "invalid Mach-O section count" {:count (count sections)}))
+       (when-not (<= 1 (count symbols) max-symbol-count)
+         (reject! "invalid Mach-O symbol count" {:count (count symbols)}))
+       (when-not (= (count symbols) (count (set (map :name symbols))))
+         (reject! "duplicate Mach-O symbol name" {}))
+       (when-not (and (integer? flags) (<= 0 flags 0xffffffff))
+         (reject! "invalid Mach-O header flags" {:flags flags}))
+       (let [segment-command-size (+ 72 (* 80 (count sections)))
+             build-command-size 24
+             symtab-command-size 24
+             command-size (+ segment-command-size build-command-size symtab-command-size)
+             data-offset (+ 32 command-size)
+             {:keys [address file-offset laid-out]} (layout-sections data-offset sections)
+             {relocation-end :file-offset laid-out :laid-out}
+             (layout-relocations file-offset laid-out)
+             symoff (align-up relocation-end 3)
+             {:keys [bytes offsets]} (string-table symbols)
+             symbol-indexes (zipmap (map :name symbols) (range))
+             string-bytes (pad-to bytes (align-up (count bytes) 3))
+             stroff (+ symoff (* 16 (count symbols)))
+             header (vec (concat (little-endian 0xfeedfacf 4)
+                                 (little-endian cpu-type 4)
+                                 (little-endian cpu-subtype 4)
+                                 (little-endian 1 4)
+                                 (little-endian 3 4)
+                                 (little-endian command-size 4)
+                                 (little-endian flags 4)
+                                 (little-endian 0 4)))
+             segment-command
+             (vec (concat (little-endian 0x19 4)
+                          (little-endian segment-command-size 4)
+                          (repeat 16 0)
+                          (little-endian 0 8) (little-endian address 8)
+                          (little-endian data-offset 8)
+                          (little-endian (- file-offset data-offset) 8)
+                          (little-endian 7 4) (little-endian 7 4)
+                          (little-endian (count sections) 4) (little-endian 0 4)
+                          (mapcat encode-section laid-out)))
+             build-command
+             (vec (concat (little-endian 0x32 4) (little-endian 24 4)
+                          (little-endian platform-id 4)
+                          (little-endian (version-field :minimum-os minimum-os) 4)
+                          (little-endian (version-field :sdk sdk) 4)
+                          (little-endian 0 4)))
+             symtab-command
+             (vec (concat (little-endian 0x2 4) (little-endian 24 4)
+                          (little-endian symoff 4)
+                          (little-endian (count symbols) 4)
+                          (little-endian stroff 4)
+                          (little-endian (count string-bytes) 4)))
+             section-data (reduce (fn [out {:keys [offset bytes]}]
+                                    (into (pad-to out offset) bytes))
+                                  (vec (concat header segment-command
+                                               build-command symtab-command))
+                                  laid-out)
+             relocation-data
+             (reduce (fn [out {:keys [reloc-offset relocations] :as section}]
+                       (if (seq relocations)
+                         (into (pad-to out reloc-offset)
+                               (mapcat #(encode-relocation machine symbol-indexes
+                                                           section %)
+                                       relocations))
+                         out))
+                     section-data
+                     laid-out)
+             symbol-data (mapcat #(encode-symbol laid-out offsets %) symbols)
+             object (vec (concat (pad-to relocation-data symoff)
+                                 symbol-data string-bytes))]
+         (when (> (count object) max-object-bytes)
+           (reject! "Mach-O object exceeds byte limit"
+                    {:bytes (count object) :limit max-object-bytes}))
+         object)))
+   :cljs
+   (defn encode-object
+     "Encode a compact Mach-O 64-bit MH_OBJECT.
+   
+     Sections are placed in caller order and aligned by their exponent. Symbols
+     use one-based section indices and section-relative values."
+     [{:keys [machine platform minimum-os sdk sections symbols flags]
+       :or {minimum-os [0 0 0] sdk [0 0 0] flags 0}}]
+     (let [{:keys [cpu-type cpu-subtype]} (get machines machine)
+           platform-id (get platforms platform)
+           sections (vec sections)
+           symbols (vec symbols)]
+       (when-not cpu-type
+         (reject! "unsupported Mach-O machine" {:machine machine}))
+       (when-not platform-id
+         (reject! "unsupported Mach-O platform" {:platform platform}))
+       (when-not (<= 1 (count sections) max-section-count)
+         (reject! "invalid Mach-O section count" {:count (count sections)}))
+       (when-not (<= 1 (count symbols) max-symbol-count)
+         (reject! "invalid Mach-O symbol count" {:count (count symbols)}))
+       (when-not (= (count symbols) (count (set (map :name symbols))))
+         (reject! "duplicate Mach-O symbol name" {}))
+       (when-not (and (integer? flags) (<= 0 flags 0xffffffff))
+         (reject! "invalid Mach-O header flags" {:flags flags}))
+       (let [segment-command-size (+ 72 (* 80 (count sections)))
+             build-command-size 24
+             symtab-command-size 24
+             command-size (+ segment-command-size build-command-size symtab-command-size)
+             data-offset (+ 32 command-size)
+             {:keys [address file-offset laid-out]} (layout-sections data-offset sections)
+             {relocation-end :file-offset laid-out :laid-out}
+             (layout-relocations file-offset laid-out)
+             symoff (align-up relocation-end 3)
+             {:keys [bytes offsets]} (string-table symbols)
+             symbol-indexes (zipmap (map :name symbols) (range))
+             string-bytes (pad-to bytes (align-up (count bytes) 3))
+             stroff (+ symoff (* 16 (count symbols)))
+             header (vec (concat (little-endian 0xfeedfacf 4)
+                                 (little-endian cpu-type 4)
+                                 (little-endian cpu-subtype 4)
+                                 (little-endian 1 4)
+                                 (little-endian 3 4)
+                                 (little-endian command-size 4)
+                                 (little-endian flags 4)
+                                 (little-endian 0 4)))
+             segment-command
+             (vec (concat (little-endian 0x19 4)
+                          (little-endian segment-command-size 4)
+                          (repeat 16 0)
+                          (little-endian 0 8) (little-endian address 8)
+                          (little-endian data-offset 8)
+                          (little-endian (- file-offset data-offset) 8)
+                          (little-endian 7 4) (little-endian 7 4)
+                          (little-endian (count sections) 4) (little-endian 0 4)
+                          (mapcat encode-section laid-out)))
+             build-command
+             (vec (concat (little-endian 0x32 4) (little-endian 24 4)
+                          (little-endian platform-id 4)
+                          (little-endian (version-field :minimum-os minimum-os) 4)
+                          (little-endian (version-field :sdk sdk) 4)
+                          (little-endian 0 4)))
+             symtab-command
+             (vec (concat (little-endian 0x2 4) (little-endian 24 4)
+                          (little-endian symoff 4)
+                          (little-endian (count symbols) 4)
+                          (little-endian stroff 4)
+                          (little-endian (count string-bytes) 4)))
+             section-data (reduce (fn [out {:keys [offset bytes]}]
+                                    (into (pad-to out offset) bytes))
+                                  (vec (concat header segment-command
+                                               build-command symtab-command))
+                                  laid-out)
+             relocation-data
+             (reduce (fn [out {:keys [reloc-offset relocations] :as section}]
+                       (if (seq relocations)
+                         (into (pad-to out reloc-offset)
+                               (mapcat #(encode-relocation machine symbol-indexes
+                                                           section %)
+                                       relocations))
+                         out))
+                     section-data
+                     laid-out)
+             symbol-data (mapcat #(encode-symbol laid-out offsets %) symbols)
+             object (vec (concat (pad-to relocation-data symoff)
+                                 symbol-data string-bytes))]
+         (when (> (count object) max-object-bytes)
+           (reject! "Mach-O object exceeds byte limit"
+                    {:bytes (count object) :limit max-object-bytes}))
+         object))))
