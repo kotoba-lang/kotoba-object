@@ -4,7 +4,7 @@
   Callers own target policy, section ordering, instruction/data bytes, symbol
   selection, and relocation requests. This namespace owns Mach-O records and
   their compact MH_OBJECT file layout, including typed external relocations."
-  {:kotoba/export #?(:kotoba [align-up encode-object encode-object-blobs little-endian] :default [align-up encode-object little-endian])}
+  {:kotoba/export #?(:kotoba [align-up encode-object encode-object-blobs encode-object-blobs-or-empty little-endian] :default [align-up encode-object little-endian])}
   (:require #?@(:kotoba [] :default [[kotoba.lang.text :as str]])))
 
 
@@ -783,6 +783,15 @@
 #?(:kotoba
    (defn encode-object [m :document] :vector-i64
      (encode-object-blobs m (vector-i64) (vector-i64))))
+
+;; `encode-object-blobs` for a caller that cannot catch an imported abort: a
+;; refused option document is the EMPTY object (no valid MH_OBJECT is empty),
+;; where the aborting entry raises the host's ex-info.
+#?(:kotoba
+   (defn encode-object-blobs-or-empty [m :document blob0 :vector-i64 blob1 :vector-i64] :vector-i64
+     (try
+       (encode-object-blobs m blob0 blob1)
+       (catch refused (vector-i64)))))
 
 #?(:clj
    (defn little-endian
