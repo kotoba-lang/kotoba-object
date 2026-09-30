@@ -4,7 +4,7 @@
   Callers own target policy, section ordering, instruction/data bytes, symbol
   selection, and relocation requests. This namespace owns Mach-O records and
   their compact MH_OBJECT file layout, including typed external relocations."
-  {:kotoba/export [align-up encode-object little-endian]}
+  {:kotoba/export #?(:kotoba [align-up encode-object encode-object-blobs little-endian] :default [align-up encode-object little-endian])}
   (:require #?@(:kotoba [] :default [[kotoba.lang.text :as str]])))
 
 
@@ -211,6 +211,45 @@
          (if (>= i n) out (recur (+ i 1) (vector-conj out (dint (delem d i)))))))))
 
 #?(:kotoba
+   ;; A section's bytes are either a vector DOCUMENT under :bytes (at most 32
+   ;; items: a document is bounded) or, when the section has :blob 0 / :blob 1,
+   ;; the vector-i64 BLOB0 / BLOB1 the caller passes beside the document to
+   ;; `encode-object-blobs` -- a real code section is far larger than a document.
+   (defn- has-blob? [s :document] :bool
+     (dhas? s (document-keyword :blob))))
+
+#?(:kotoba
+   (defn- blob-of [s :document blob0 :vector-i64 blob1 :vector-i64] :vector-i64
+     (if (has-blob? s)
+       (if (= 0 (dint (dget s (document-keyword :blob)))) blob0 blob1)
+       (doc-bytes (dget s (document-keyword :bytes))))))
+
+#?(:kotoba
+   (defn- section-size [s :document blob0 :vector-i64 blob1 :vector-i64] :i64
+     (if (has-blob? s)
+       (vector-count (blob-of s blob0 blob1))
+       (dcount (dget s (document-keyword :bytes))))))
+
+#?(:kotoba
+   (defn- vector-bytes-ok? [v :vector-i64 i :i64] :bool
+     (if (>= i (vector-count v))
+       true
+       (if (if (>= (vector-at v i) 0) (<= (vector-at v i) 255) false)
+         (vector-bytes-ok? v (+ i 1))
+         false))))
+
+#?(:kotoba
+   (defn- section-bytes-ok? [s :document blob0 :vector-i64 blob1 :vector-i64] :bool
+     (if (has-blob? s)
+       (let [k (dget s (document-keyword :blob))]
+         (if (dint? k)
+           (if (= 0 (dint k))
+             (vector-bytes-ok? blob0 0)
+             (if (= 1 (dint k)) (vector-bytes-ok? blob1 0) false))
+           false))
+       (bytes-ok? (dget s (document-keyword :bytes))))))
+
+#?(:kotoba
    (defn- machine-cpu [d :document] :i64
      (cond (document-equal? d (document-keyword :aarch64)) 0x0100000c
            (document-equal? d (document-keyword :x86-64)) 0x01000007
@@ -323,11 +362,10 @@
 
 #?(:kotoba
    ;; one section's own checks, in the host's order
-   (defn- check-section [s :document] :i64
-     (let [bytes-d (dget s (document-keyword :bytes))
-           align-d (dget s (document-keyword :align))
+   (defn- check-section [s :document blob0 :vector-i64 blob1 :vector-i64] :i64
+     (let [align-d (dget s (document-keyword :align))
            flags-d (dget s (document-keyword :flags))]
-       (if (bytes-ok? bytes-d)
+       (if (section-bytes-ok? s blob0 blob1)
          (if (if (dint? align-d) (if (>= (dint align-d) 0) (<= (dint align-d) 15) false) false)
            (let [seg (fixed-name (document-keyword :segment) (dget s (document-keyword :segment)))
                  nm (fixed-name (document-keyword :section) (dget s (document-keyword :name)))]
@@ -338,11 +376,11 @@
          (throw (ex-info "invalid Mach-O byte region" {:field (document-keyword :section-bytes)}))))))
 
 #?(:kotoba
-   (defn- check-sections [secs :document i :i64 n :i64] :i64
+   (defn- check-sections [secs :document i :i64 n :i64 blob0 :vector-i64 blob1 :vector-i64] :i64
      (if (>= i n)
        0
-       (let [ok (check-section (delem secs i))]
-         (check-sections secs (+ i 1) n)))))
+       (let [ok (check-section (delem secs i) blob0 blob1)]
+         (check-sections secs (+ i 1) n blob0 blob1)))))
 
 #?(:kotoba
    (defn- check-symbol-name [s :document] :i64
@@ -379,13 +417,13 @@
 
 #?(:kotoba
    ;; lanes per section: address, size, offset, align, flags, reloc-offset, reloc-count
-   (defn- layout [secs :document data-offset :i64] :vector-i64
+   (defn- layout [secs :document data-offset :i64 blob0 :vector-i64 blob1 :vector-i64] :vector-i64
      (let [n (dcount secs)]
        (loop [i 0 address 0 foff data-offset out (vector-i64)]
          (if (>= i n)
            (vector-conj (vector-conj out address) foff)
            (let [s (delem secs i)
-                 size (dcount (dget s (document-keyword :bytes)))
+                 size (section-size s blob0 blob1)
                  al (dint (dget s (document-keyword :align)))
                  a (align-up* address al)
                  o (align-up* foff al)
@@ -606,12 +644,13 @@
      (if (>= (vector-count v) size) v (zeros-onto v (- size (vector-count v))))))
 
 #?(:kotoba
-   (defn- section-data [secs :document lay :vector-i64 i :i64 out :vector-i64] :vector-i64
+   (defn- section-data [secs :document lay :vector-i64 i :i64 out :vector-i64 blob0 :vector-i64 blob1 :vector-i64] :vector-i64
      (if (>= i (dcount secs))
        out
        (section-data secs lay (+ i 1)
                      (append-all (pad* out (sec-lane lay i 2))
-                                 (doc-bytes (dget (delem secs i) (document-keyword :bytes))))))))
+                                 (blob-of (delem secs i) blob0 blob1))
+                     blob0 blob1))))
 
 #?(:kotoba
    (defn- relocation-data [machine :document syms :document secs :document lay :vector-i64 i :i64 out :vector-i64] :vector-i64
@@ -633,12 +672,13 @@
 
 #?(:kotoba
    (defn- encode-checked [m :document machine :document platform-id :i64 cpu :i64 subtype :i64
-                          secs :document syms :document nsec :i64 nsym :i64 flags :i64] :vector-i64
+                          secs :document syms :document nsec :i64 nsym :i64 flags :i64
+                          blob0 :vector-i64 blob1 :vector-i64] :vector-i64
      (let [seg-size (+ 72 (* 80 nsec))
            command-size (+ seg-size 48)
            data-offset (+ 32 command-size)
-           ok1 (check-sections secs 0 nsec)
-           lay0 (layout secs data-offset)
+           ok1 (check-sections secs 0 nsec blob0 blob1)
+           lay0 (layout secs data-offset blob0 blob1)
            ok2 (check-reloc-counts secs 0 nsec)
            ok3 (check-symbol-names syms 0 nsym)
            min-d (if (dhas? m (document-keyword :minimum-os)) (dget m (document-keyword :minimum-os)) (default-version))
@@ -706,7 +746,7 @@
                             (le* stroff 4))
                            (le* (vector-count string-bytes) 4))
            head (append-all (append-all (append-all header segment-command) build-command) symtab-command)
-           sec-data (section-data secs lay 0 head)
+           sec-data (section-data secs lay 0 head blob0 blob1)
            reloc-data (relocation-data machine syms secs lay 0 sec-data)
            symbol-data (all-symbols nsec lay syms 0 (vector-i64))
            obj (append-all (append-all (pad* reloc-data symoff) symbol-data) string-bytes)]
@@ -715,7 +755,7 @@
          obj))))
 
 #?(:kotoba
-   (defn encode-object [m :document] :vector-i64
+   (defn encode-object-blobs [m :document blob0 :vector-i64 blob1 :vector-i64] :vector-i64
      (let [machine (dget m (document-keyword :machine))
            platform (dget m (document-keyword :platform))
            cpu (machine-cpu machine)
@@ -735,10 +775,14 @@
                (if (has-duplicate-names? syms)
                  (throw (ex-info "duplicate Mach-O symbol name" {}))
                  (if (if (dint? flags-d) (if (>= (dint flags-d) 0) (<= (dint flags-d) 4294967295) false) false)
-                   (encode-checked m machine platform-id cpu subtype secs syms nsec nsym (dint flags-d))
+                   (encode-checked m machine platform-id cpu subtype secs syms nsec nsym (dint flags-d) blob0 blob1)
                    (throw (ex-info "invalid Mach-O header flags" {:flags flags-d}))))
                (throw (ex-info "invalid Mach-O symbol count" {:count nsym})))
              (throw (ex-info "invalid Mach-O section count" {:count nsec}))))))))
+
+#?(:kotoba
+   (defn encode-object [m :document] :vector-i64
+     (encode-object-blobs m (vector-i64) (vector-i64))))
 
 #?(:clj
    (defn little-endian
