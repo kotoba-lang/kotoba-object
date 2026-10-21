@@ -13,11 +13,13 @@ remain consumer responsibilities.
 
 This is a source candidate. No encoder, compiler build, native admission,
 artifact generation, byte comparison, runtime or test was executed. Static
-source inventory: 192 lines / 29 functions, balanced delimiters, own-call
+source inventory: 193 lines / 29 functions, balanced delimiters, own-call
 arities after thread expansion, known heads and no local data-as-function calls.
-Own record inventory read five constructors and sixteen field accesses without
+Own record inventory read five constructors and seventeen field accesses without
 field-count/key mismatches. Source SHA-256:
-`1f1249676b543f3c8580d4ba248a7d49e0a756687e1ec3fc13f224b94ff7def7`.
+`898ac7a77018f496c46c0673666ea0876a3a643aa805b2c66e308f71c3691f1a`.
+The high/low byte selector now branches between literal record fields, as
+required by the current owning validator, instead of using a computed key.
 
 ## Complete public boundary
 
@@ -113,8 +115,9 @@ replacement hosted or unconditional-green gate.
 The target is canonical Kotoba / Amu selfhost only. Complete native compiler
 and consumer source admission, byte/refusal/resource execution, Definition CIDs,
 reviewed owning-main/source/lock integration and self-rebuild remain required.
-The PE32+/Mach-O modules and their required consumer closure also need canonical
-ports; this ELF module is not a claim that the whole repository is migrated.
+The [PE32+ candidate](pe32plus-kotoba-port.md) now supplies that public boundary.
+Mach-O and complete consumer closure remain open; this ELF module is not a
+claim that the whole repository is migrated.
 Existing hosted files are migration provenance, without a permanent twin or
 fallback requirement. Native CDCI may be enabled only with its actual full
 compiler/consumer evidence. No existing service or production route was changed.

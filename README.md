@@ -17,6 +17,9 @@ Its seven public functions return explicit bytes/error/field records. Read
 [the complete API and migration record](docs/elf64-kotoba-port.md) before
 connecting a native consumer; native admission and byte/refusal qualification
 remain open.
+The complete PE32+ candidate is `src/kotoba/object/pe32plus.kotoba`, with
+shared natural-number arithmetic in `unsigned.kotoba`;
+see [the PE32+ API and source record](docs/pe32plus-kotoba-port.md).
 
 ## Boundary
 
@@ -42,7 +45,8 @@ candidate; its remote state was already disabled manually. No replacement
 native gate is claimed until the complete compiler/consumer closure exists.
 
 ELF64 includes every public record encoder, integer range and bounded padding.
-PE32+/Mach-O canonical ports, whole-component native admission, Definition CIDs,
+The PE32+ candidate now covers the complete image boundary. The Mach-O port,
+whole-component native admission, Definition CIDs,
 byte/refusal behavior, consumer API integration and reviewed pins remain open.
 Existing hosted sources are migration inputs, with no permanent twin or host
 fallback requirement.

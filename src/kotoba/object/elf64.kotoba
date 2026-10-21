@@ -63,8 +63,9 @@
       :else false)))
 (defn- number-byte [n [:ref :kotoba.object.elf64/number] index :i64] :i64
   (let [unsigned? (= (record-get [:ref :kotoba.object.elf64/number] n :kind) :unsigned)
-        value (record-get [:ref :kotoba.object.elf64/number] n
-                (if (and unsigned? (>= index 4)) :high :low))
+        value (if (and unsigned? (>= index 4))
+                (record-get [:ref :kotoba.object.elf64/number] n :high)
+                (record-get [:ref :kotoba.object.elf64/number] n :low))
         shift (* 8 (if (and unsigned? (>= index 4)) (- index 4) index))]
     (bit-and (u64-shift-right value shift) 255)))
 
