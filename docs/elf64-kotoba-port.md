@@ -115,9 +115,10 @@ replacement hosted or unconditional-green gate.
 The target is canonical Kotoba / Amu selfhost only. Complete native compiler
 and consumer source admission, byte/refusal/resource execution, Definition CIDs,
 reviewed owning-main/source/lock integration and self-rebuild remain required.
-The [PE32+ candidate](pe32plus-kotoba-port.md) now supplies that public boundary.
-Mach-O and complete consumer closure remain open; this ELF module is not a
-claim that the whole repository is migrated.
+The [PE32+ candidate](pe32plus-kotoba-port.md) and
+[Mach-O candidate](macho64-kotoba-port.md) now supply their complete public
+source boundaries. Complete consumer closure remains open; these source
+modules do not qualify the whole repository's native migration.
 Existing hosted files are migration provenance, without a permanent twin or
 fallback requirement. Native CDCI may be enabled only with its actual full
 compiler/consumer evidence. No existing service or production route was changed.

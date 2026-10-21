@@ -109,7 +109,8 @@ integration remain unqualified. No PE image was produced or booted.
 The current ELF candidate also fixes a computed record selector to literal
 branches required by the owning validator. The twelve Linux-static source
 candidates were re-read with that selector inventory and had no such findings;
-this is still source review, not native admission. Mach-O's complete canonical
-port, final native image assembly, owning-main/source/lock integration and
+this is still source review, not native admission. The complete
+[Mach-O canonical source candidate](macho64-kotoba-port.md) is now present.
+Final native image assembly, owning-main/source/lock integration and
 whole compiler self-rebuild remain open. The removed legacy CI stays retired
 in the draft; no native CDCI success, service or production route is claimed.
