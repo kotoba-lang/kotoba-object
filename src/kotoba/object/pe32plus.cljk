@@ -40,7 +40,7 @@
   [n width]
   (when-not (and (integer? n) (integer? width) (<= 1 width 8) (<= 0 n))
     (throw (ex-info "invalid little-endian field" {:value n :width width})))
-  (mapv #(mod (quot n (nth byte-scale %)) 256) (range width)))
+  (mapv (fn [x] (mod (quot n (nth byte-scale x)) 256)) (range width)))
 
 (defn align-up [n alignment]
   (when-not (and (integer? n) (<= 0 n)
@@ -73,7 +73,7 @@
 
 (defn- ascii-bytes [value]
   (when-not (and (string? value) (<= 1 (count value) 8)
-                 (every? #(<= 0x20 (code-point %) 0x7e) value))
+                 (every? (fn [x] (<= 0x20 (code-point x) 0x7e)) value))
     (throw (ex-info "PE section name must be 1-8 printable ASCII bytes"
                     {:name value})))
   (mapv code-point value))
@@ -192,8 +192,8 @@
                            :left-virtual-size (:virtual-size left)
                            :right-rva (:rva right)}))))
       (let [required (reduce max headers-span
-                             (map #(+ (:rva %)
-                                      (align-up (:virtual-size %) section-alignment))
+                             (map (fn [x] (+ (:rva x)
+                                             (align-up (:virtual-size x) section-alignment)))
                                   sections))]
         (when-not (and (integer? image-size) (<= required image-size))
           (throw (ex-info "PE image size does not cover its sections"
