@@ -42,6 +42,13 @@ sections, symbols, external relocations, and platform build-version metadata.
 
 ## Development
 
-```sh
-kbb -M:test
-```
+Canonical source, build and CDCI are migrating to Kotoba / Amu selfhost.
+The old Clojure/JVM workflow and its CLJK compatibility-loader prerequisite
+are retired. Complete object encoders and their positive/refusal/resource
+corpus still need canonical integration and native qualification; no native
+gate is activated or declared successful here. The old hosted sources and
+drivers remain migration inventory, not a required final oracle.
+
+See [native CDCI retirement](docs/native-cdci-retirement.md) for the exact
+source/blob provenance, unchanged corpus and open acceptance. Historical
+KBB/JVM commands do not establish an Amu-produced native compiler or library.
